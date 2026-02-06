@@ -2819,7 +2819,7 @@
         
         if (Math.abs(maxAbsVel) < 0.001) {
             // 速度が0に近い場合、0ライン上に描画
-            ctx.strokeStyle = 'rgba(76, 175, 80, 0.5)';
+            ctx.strokeStyle = 'rgba(76, 175, 80, 1)';
             ctx.lineWidth = 2;
             ctx.beginPath();
             const zeroY = gridY + curveHeight / 2;
@@ -2828,7 +2828,7 @@
             ctx.stroke();
             
             // 0ライン
-            ctx.strokeStyle = 'rgba(76, 175, 80, 0.5)';
+            ctx.strokeStyle = 'rgba(76, 175, 80, 1)';
             ctx.lineWidth = 1;
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
@@ -2838,7 +2838,7 @@
             ctx.setLineDash([]);
         } else {
             // 速度曲線を描画
-            ctx.strokeStyle = 'rgba(76, 175, 80, 0.5)';
+            ctx.strokeStyle = 'rgba(76, 175, 80, 1)';
             ctx.lineWidth = 2;
             ctx.beginPath();
             
@@ -2862,7 +2862,7 @@
             const zeroNormalized = (0 - minVel) / velRange;
             const zeroY = gridY + curveHeight * (1 - zeroNormalized);
             
-            ctx.strokeStyle = 'rgba(76, 175, 80, 0.5)';
+            ctx.strokeStyle = 'rgba(76, 175, 80, 1)';
             ctx.lineWidth = 1;
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
@@ -3156,7 +3156,7 @@
         
         // 全て0の場合（リニアなど）、0ライン上に描画
         if (Math.abs(maxAbsAccel) < 0.01) {
-            ctx.strokeStyle = 'rgba(255, 99, 132, 0.3)';
+            ctx.strokeStyle = 'rgba(255, 99, 132, 1)';
             ctx.lineWidth = 2;
             ctx.beginPath();
             const zeroY = gridY + curveHeight / 2;
@@ -3165,7 +3165,7 @@
             ctx.stroke();
             
             // 0ラインも描画
-            ctx.strokeStyle = 'rgba(255, 99, 132, 0.5)';
+            ctx.strokeStyle = 'rgba(255, 99, 132, 1)';
             ctx.lineWidth = 1;
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
@@ -3179,7 +3179,7 @@
         }
         
         // 加速度グラフを描画（半透明）
-        ctx.strokeStyle = 'rgba(255, 99, 132, 0.3)';
+        ctx.strokeStyle = 'rgba(255, 99, 132, 1)';
         ctx.lineWidth = 2;
         ctx.beginPath();
         
@@ -3202,7 +3202,7 @@
         const zeroNormalized = (0 - minAccel) / accelRange;
         const zeroY = gridY + curveHeight - (zeroNormalized * curveHeight);
         
-        ctx.strokeStyle = 'rgba(255, 99, 132, 0.5)';
+        ctx.strokeStyle = 'rgba(255, 99, 132, 1)';
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         ctx.beginPath();
@@ -3287,7 +3287,7 @@
         const accelRange = maxAccel - minAccel;
         if (accelRange === 0) {
             // 全て0の場合（リニアなど）、0ライン上に描画
-            ctx.strokeStyle = 'rgba(255, 99, 132, 0.3)';
+            ctx.strokeStyle = 'rgba(255, 99, 132, 1)';
             ctx.lineWidth = 2;
             ctx.beginPath();
             const zeroY = gridY + curveHeight / 2;
@@ -3296,7 +3296,7 @@
             ctx.stroke();
             
             // 0ラインも描画
-            ctx.strokeStyle = 'rgba(255, 99, 132, 0.5)';
+            ctx.strokeStyle = 'rgba(255, 99, 132, 1)';
             ctx.lineWidth = 1;
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
@@ -3310,7 +3310,7 @@
         }
         
         // 加速度グラフを描画（半透明）
-        ctx.strokeStyle = 'rgba(255, 99, 132, 0.3)';
+        ctx.strokeStyle = 'rgba(255, 99, 132, 1)';
         ctx.lineWidth = 2;
         ctx.beginPath();
         
@@ -3333,7 +3333,7 @@
         const zeroNormalized = (0 - minAccel) / accelRange;
         const zeroY = gridY + curveHeight - (zeroNormalized * curveHeight);
         
-        ctx.strokeStyle = 'rgba(255, 99, 132, 0.5)';
+        ctx.strokeStyle = 'rgba(255, 99, 132, 1)';
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         ctx.beginPath();
