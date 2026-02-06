@@ -2995,6 +2995,55 @@
         let accelerationValues = [];
         let debugInfo = '📊 加速度計算 (ベジェ2次微分 d²Y/dt²):\n';
         
+        // 不連続点を記録する配列
+        const discontinuities = [];
+        
+        // セグメント境界での加速度を記録
+        const segmentBoundaryAccels = [];
+        
+        // ベジェセグメントの加速度を計算するヘルパー関数
+        function calcAccelAtTau(seg, tau) {
+            const { p0, p1, p2, p3 } = seg;
+            const x0 = (p0.x - gridX) / curveWidth;
+            const x1 = (p1.x - gridX) / curveWidth;
+            const x2 = (p2.x - gridX) / curveWidth;
+            const x3 = (p3.x - gridX) / curveWidth;
+            const y0 = (gridY + curveHeight - p0.y) / curveHeight;
+            const y1 = (gridY + curveHeight - p1.y) / curveHeight;
+            const y2 = (gridY + curveHeight - p2.y) / curveHeight;
+            const y3 = (gridY + curveHeight - p3.y) / curveHeight;
+            
+            const oneMinusTau = 1 - tau;
+            
+            const X_tau = oneMinusTau * oneMinusTau * oneMinusTau * x0 +
+                          3 * oneMinusTau * oneMinusTau * tau * x1 +
+                          3 * oneMinusTau * tau * tau * x2 +
+                          tau * tau * tau * x3;
+            
+            const dX_dtau = 3 * oneMinusTau * oneMinusTau * (x1 - x0) +
+                            6 * oneMinusTau * tau * (x2 - x1) +
+                            3 * tau * tau * (x3 - x2);
+            
+            const d2X_dtau2 = 6 * oneMinusTau * (x2 - 2*x1 + x0) +
+                              6 * tau * (x3 - 2*x2 + x1);
+            
+            const dY_dtau = 3 * oneMinusTau * oneMinusTau * (y1 - y0) +
+                            6 * oneMinusTau * tau * (y2 - y1) +
+                            3 * tau * tau * (y3 - y2);
+            
+            const d2Y_dtau2 = 6 * oneMinusTau * (y2 - 2*y1 + y0) +
+                              6 * tau * (y3 - 2*y2 + y1);
+            
+            let accel = 0;
+            if (Math.abs(dX_dtau) > 0.0001) {
+                const numerator = d2Y_dtau2 * dX_dtau - dY_dtau * d2X_dtau2;
+                const denominator = dX_dtau * dX_dtau * dX_dtau;
+                accel = numerator / denominator;
+            }
+            
+            return { time: X_tau, accel: accel };
+        }
+        
         // 各セグメントでベジェ曲線の2次微分を計算
         for (let segIdx = 0; segIdx < bezierSegments.length; segIdx++) {
             const segment = bezierSegments[segIdx];
@@ -3016,6 +3065,11 @@
                 debugInfo += `  X: [${x0.toFixed(3)}, ${x1.toFixed(3)}, ${x2.toFixed(3)}, ${x3.toFixed(3)}]\n`;
                 debugInfo += `  Y: [${y0.toFixed(3)}, ${y1.toFixed(3)}, ${y2.toFixed(3)}, ${y3.toFixed(3)}]\n`;
             }
+            
+            // セグメント境界での加速度を記録
+            const startAccel = calcAccelAtTau(segment, 0);
+            const endAccel = calcAccelAtTau(segment, 1);
+            segmentBoundaryAccels.push({ start: startAccel, end: endAccel, segIdx: segIdx });
             
             const segmentSamples = Math.ceil(samples / bezierSegments.length);
             
@@ -3060,6 +3114,24 @@
                 }
                 
                 accelerationValues.push({ time: X_tau, value: acceleration });
+            }
+        }
+        
+        // 不連続点を検出（隣接セグメント間での加速度の差が閾値を超えている場合）
+        const discontinuityThreshold = 0.5; // 閾値（調整可能）
+        for (let i = 0; i < segmentBoundaryAccels.length - 1; i++) {
+            const leftEnd = segmentBoundaryAccels[i].end;
+            const rightStart = segmentBoundaryAccels[i + 1].start;
+            const accelDiff = Math.abs(leftEnd.accel - rightStart.accel);
+            
+            if (accelDiff > discontinuityThreshold) {
+                discontinuities.push({
+                    time: leftEnd.time,
+                    leftAccel: leftEnd.accel,
+                    rightAccel: rightStart.accel,
+                    diff: accelDiff
+                });
+                debugInfo += `\n⚠️ 不連続点検出 (t=${leftEnd.time.toFixed(3)}): 左=${leftEnd.accel.toFixed(2)}, 右=${rightStart.accel.toFixed(2)}, 差=${accelDiff.toFixed(2)}\n`;
             }
         }
         
@@ -3133,6 +3205,47 @@
         ctx.lineTo(gridX + curveWidth, zeroY);
         ctx.stroke();
         ctx.setLineDash([]);
+        
+        // 不連続点をマーカーで表示
+        if (discontinuities.length > 0) {
+            ctx.setLineDash([]);
+            
+            for (const disc of discontinuities) {
+                const x = gridX + disc.time * curveWidth;
+                
+                // 縦線（オレンジ色の破線）
+                ctx.strokeStyle = 'rgba(255, 165, 0, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath();
+                ctx.moveTo(x, gridY);
+                ctx.lineTo(x, gridY + curveHeight);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // 左側の加速度点（赤）
+                const leftNorm = (disc.leftAccel - minAccel) / accelRange;
+                const leftY = gridY + curveHeight - (leftNorm * curveHeight);
+                ctx.fillStyle = 'rgba(255, 99, 132, 1)';
+                ctx.beginPath();
+                ctx.arc(x - 2, leftY, 5, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // 右側の加速度点（オレンジ）
+                const rightNorm = (disc.rightAccel - minAccel) / accelRange;
+                const rightY = gridY + curveHeight - (rightNorm * curveHeight);
+                ctx.fillStyle = 'rgba(255, 165, 0, 1)';
+                ctx.beginPath();
+                ctx.arc(x + 2, rightY, 5, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // 警告マーク
+                ctx.fillStyle = 'rgba(255, 165, 0, 1)';
+                ctx.font = 'bold 14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('⚠', x, gridY - 5);
+            }
+        }
         
         ctx.restore();
     }
