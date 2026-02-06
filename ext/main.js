@@ -382,11 +382,6 @@
             }
         }, 100);
         
-        // 保存されたグラフデータを復元
-        setTimeout(() => {
-            restoreGraphDataFromFile();
-        }, 150);
-        
         console.log('AGraph Extension: Initialization completed');
         updateOutput('AGraph Extension initialized.<br>Default curve loaded. Select layers and click "Analyze Keyframes" button.');
     }
@@ -632,9 +627,6 @@
                     
                     let message = `Easing analysis completed: ${keyframeCount} keyframes analyzed.`;
                     updateOutput(message);
-                    
-                    // グラフデータを保存
-                    saveGraphDataToFile();
                 } else {
                     updateOutput(`No selected keyframes found. Please select at least 2 keyframes in the timeline.`);
                 }
@@ -4180,9 +4172,6 @@
                 
                 // ドラッグ終了後は通常の再描画のみ（自動スケール調整しない）
                 redrawNPointCurve();
-                
-                // グラフデータを保存
-                saveGraphDataToFile();
             }
             isDragging = false;
             dragHandle = null;
@@ -8482,9 +8471,6 @@
             alert(debugLog.join('\n'));
             debugLog = [];
         }
-        }
     };
-    
-    // ui-bridge-v48.jsから使用できるようにグローバル関数として公開
 
 })();

@@ -50,11 +50,6 @@
                             <button id="settingsButton" class="x-button" title="Settings & Help">
                                 <img class="maximize-2" src="img/settings-1.svg" alt="Settings">
                             </button>
-                            
-                            <!-- Layout Toggle Button -->
-                            <button id="layoutToggleButton" class="x-button" title="Toggle Layout (Vertical/Horizontal)">
-                                <img id="layoutToggleIcon" class="maximize-2" src="img/vertical.svg" alt="Layout">
-                            </button>
                         </div>
                     </div>
                 </section>
@@ -73,81 +68,13 @@
                             <img class="icon-2" src="img/vector-6.svg" alt="">
                             <span class="apply bouutn">Apply</span>
                         </button>
-
-                        <!-- Save Button -->
-                        <button id="savePresetButton" class="e-button">
-                            <img class="icon-3" src="img/vector-7.svg" alt="">
-                            <span class="save bouutn">Save</span>
-                        </button>
-                    </div>
-                </section>
-
-                <!-- Resize Bar -->
-                <div id="resizeBar" class="bar-resize"></div>
-
-                <!-- Group Section -->
-                <section class="section-group section">
-                    <div class="div">
-                        <!-- Group Name Display (synced with hidden select) -->
-                        <div id="groupNameDisplay" class="name-pulldown">Default</div>
-                        
-                        <!-- Hidden Select for JS Compatibility -->
-                        <select id="groupSelect" class="hidden">
-                            <option value="Default">Default</option>
-                        </select>
-
-                        <!-- Rename Group Button -->
-                        <button id="editGroupButton" class="x-button-1" title="Rename Group">
-                            <img class="icon" src="img/icon-3.svg" alt="Edit">
-                        </button>
-
-                        <!-- Add Group Button -->
-                        <button id="addGroupButton" class="x-button-1" title="Add New Group">
-                            <img class="icon" src="img/icon-4.svg" alt="+">
-                        </button>
-
-                        <!-- Delete Group Button -->
-                        <button id="deleteGroupButton" class="x-button-1" title="Delete Group">
-                            <img class="icon" src="img/icon-5.svg" alt="Delete">
-                        </button>
-
-                        <!-- Card Size Slider -->
-                        <div id="cardSizeSlider" class="card-size-slider" title="Adjust Preset Card Size">
-                            <img class="vector-1" src="img/vector-1-2.svg" alt="">
-                            <div class="ellipse-1"></div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Preset Section -->
-                <section class="section-1 section">
-                    <!-- Preset Cards Container -->
-                    <div id="presetCardsContainer" class="div-preset">
-                        <!-- Preset cards will be dynamically inserted here by main.js -->
                     </div>
                 </section>
 
                 <!-- Hidden Elements for JS Compatibility -->
                 <div id="output" class="hidden"></div>
-                
-                <!-- Hidden Modal Elements (if needed) -->
-                <select id="saveGroupSelect" class="hidden"></select>
-                <input id="presetNameInput" type="text" class="hidden">
-                <button id="deletePresetButton" class="hidden">Delete Preset</button>
             </div>
         </div>
-    </div>
-
-    <!-- Context Menu for Preset Cards -->
-    <div id="presetContextMenu" class="context-menu">
-        <div class="context-menu-item" data-action="rename">Rename</div>
-        <div class="context-menu-item" data-action="delete">Delete</div>
-        <div class="context-menu-separator"></div>
-        <div class="context-menu-item context-menu-parent" data-action="move">
-            Move to Group
-            <span class="context-menu-arrow">▶</span>
-        </div>
-        <div id="moveToGroupSubmenu" class="context-submenu"></div>
     </div>
 
     <!-- Numeric Input Modal for Handle/Point Values -->
@@ -166,10 +93,6 @@
     <div id="settingsModal" class="settings-modal" style="display: none;">
         <div class="settings-content">
             <h3>AGraph - Features & Controls</h3>
-            <div class="settings-preset-actions">
-                <button id="exportPresetsButton" class="settings-action-btn">Export All Presets</button>
-                <button id="importPresetsButton" class="settings-action-btn">Import Presets</button>
-            </div>
             <div class="settings-section">
                 <h4>Workflow</h4>
                 <ul>
@@ -199,18 +122,6 @@
                     <li><strong>Scale +/- buttons</strong> - Zoom in/out the graph view</li>
                     <li><strong>V button (green)</strong> - Toggle velocity graph overlay</li>
                     <li><strong>A button (red)</strong> - Toggle acceleration graph overlay</li>
-                    <li><strong>Layout button</strong> - Switch between vertical/horizontal layout</li>
-                </ul>
-            </div>
-            <div class="settings-section">
-                <h4>Presets</h4>
-                <ul>
-                    <li><strong>Click preset card</strong> - Load preset curve into graph</li>
-                    <li><strong>Right-click preset card</strong> - Rename, move to group, or delete</li>
-                    <li><strong>Save button</strong> - Save current curve as new preset</li>
-                    <li><strong>+ button</strong> - Create new preset group</li>
-                    <li><strong>Edit/Delete group buttons</strong> - Manage preset groups</li>
-                    <li><strong>Card size slider</strong> - Adjust preset card display size</li>
                 </ul>
             </div>
             <div class="settings-buttons">
@@ -223,51 +134,5 @@
     <script src="CSInterface.js"></script>
     <script src="chart.min.js"></script>
     <script src="main.js"></script>
-    <script src="ui-bridge-v48.js"></script>
-    
-    <!-- License Framework - Must be loaded after main.js -->
-    <script>
-        // Load license framework using Node.js require
-        if (typeof require !== 'undefined') {
-            try {
-                // Get the extension path using CSInterface
-                var csInterface = new CSInterface();
-                var extensionPath = csInterface.getSystemPath(SystemPath.EXTENSION);
-                var aespPath = extensionPath + '/ext/aesp.umd.js';
-                
-                const AESP = require(aespPath);
-                
-                // Initialize license check
-                const aesp = new AESP({
-                    productVersion: '1.0',
-                    aboutText: 'AGraph v1.0\n\nAn After Effects easing extension that supports curves with three or more points\n\n© Grape Design'
-                }, function(isValidLicense, isTrial, licenseType) {
-                    
-                    console.log('License check result:', {
-                        isValidLicense: isValidLicense,
-                        isTrial: isTrial,
-                        licenseType: licenseType
-                    });
-                    
-                    // Store license status globally
-                    window.aespLicenseStatus = {
-                        isValid: isValidLicense,
-                        isTrial: isTrial,
-                        type: licenseType
-                    };
-                    
-                    // Dispatch event for main.js to handle
-                    window.dispatchEvent(new CustomEvent('licenseChecked', {
-                        detail: window.aespLicenseStatus
-                    }));
-                });
-                
-                // Make aesp instance globally available
-                window.aesp = aesp;
-            } catch (error) {
-                console.error('License framework initialization error:', error);
-            }
-        }
-    </script>
 </body>
 </html>
