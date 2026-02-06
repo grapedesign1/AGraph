@@ -124,6 +124,14 @@
                     <li><strong>A button (red)</strong> - Toggle acceleration graph overlay</li>
                 </ul>
             </div>
+            <div class="settings-section">
+                <h4>Acceleration Discontinuity Threshold</h4>
+                <div class="threshold-control">
+                    <input type="range" id="accelThresholdSlider" min="0.1" max="5" step="0.1" value="0.5">
+                    <span id="accelThresholdValue">0.5</span>
+                </div>
+                <p style="font-size: 11px; color: #888; margin-top: 5px;">Lower values detect smaller discontinuities (more sensitive)</p>
+            </div>
             <div class="settings-buttons">
                 <button id="settingsClose" class="settings-btn">Close</button>
             </div>

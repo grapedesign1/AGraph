@@ -57,6 +57,7 @@
     let nPointHandleEditingInitialized = false; // N点ハンドル編集の初期化フラグ
     let showAcceleration = false; // 加速度グラフの表示フラグ（デフォルトでオフ）
     let showVelocity = false; // 速度グラフの表示フラグ（デフォルトでオフ）
+    let accelDiscontinuityThreshold = 0.5; // 加速度不連続点の検出閾値
     
 
 
@@ -462,6 +463,20 @@
             settingsModal.addEventListener('click', function(e) {
                 if (e.target === settingsModal) {
                     closeSettingsModal();
+                }
+            });
+        }
+        
+        // 閾値スライダーのイベント
+        const accelThresholdSlider = document.getElementById('accelThresholdSlider');
+        const accelThresholdValue = document.getElementById('accelThresholdValue');
+        if (accelThresholdSlider && accelThresholdValue) {
+            accelThresholdSlider.addEventListener('input', function() {
+                accelDiscontinuityThreshold = parseFloat(this.value);
+                accelThresholdValue.textContent = this.value;
+                // グラフを再描画
+                if (graphData.keyframes.length > 0) {
+                    drawGraph();
                 }
             });
         }
@@ -3118,13 +3133,12 @@
         }
         
         // 不連続点を検出（隣接セグメント間での加速度の差が閾値を超えている場合）
-        const discontinuityThreshold = 0.5; // 閾値（調整可能）
         for (let i = 0; i < segmentBoundaryAccels.length - 1; i++) {
             const leftEnd = segmentBoundaryAccels[i].end;
             const rightStart = segmentBoundaryAccels[i + 1].start;
             const accelDiff = Math.abs(leftEnd.accel - rightStart.accel);
             
-            if (accelDiff > discontinuityThreshold) {
+            if (accelDiff > accelDiscontinuityThreshold) {
                 discontinuities.push({
                     time: leftEnd.time,
                     leftAccel: leftEnd.accel,
