@@ -2985,7 +2985,7 @@
      * @param {Array} keyframes - 元のキーフレーム情報（時間・値・速度）
      */
     function drawAccelerationGraphFromBezier(ctx, bezierSegments, gridX, gridY, curveWidth, curveHeight, keyframes) {
-        if (!keyframes || keyframes.length < 2) {
+        if (!keyframes || keyframes.length < 2 || !bezierSegments || bezierSegments.length === 0) {
             return;
         }
         
@@ -2993,139 +2993,73 @@
         
         const samples = 100;
         let accelerationValues = [];
-        let debugInfo = '📊 加速度計算 (Hermite補間):\n';
+        let debugInfo = '📊 加速度計算 (ベジェ2次微分 d²Y/dt²):\n';
         
-        // 各キーフレーム位置での速度とY座標をBezier曲線から計算
-        const N = keyframes.length;
-        const speeds = new Array(N);
-        const yCoords = new Array(N);  // 正規化空間でのY座標を保存
-        
-        for (let i = 0; i < N; i++) {
-            if (i === 0 && bezierSegments.length > 0) {
-                // 始点: 最初のセグメントの t=0 での速度と座標
-                const seg = bezierSegments[0];
-                speeds[i] = calculateBezierVelocityNormalized(seg, 0, gridX, gridY, curveWidth, curveHeight);
-                // Y座標を取得
-                const { p0 } = seg;
-                yCoords[i] = (gridY + curveHeight - p0.y) / curveHeight;
-            } else if (i === N - 1 && bezierSegments.length > 0) {
-                // 終点: 最後のセグメントの t=1 での速度と座標
-                const seg = bezierSegments[bezierSegments.length - 1];
-                speeds[i] = calculateBezierVelocityNormalized(seg, 1, gridX, gridY, curveWidth, curveHeight);
-                // Y座標を取得
-                const { p3 } = seg;
-                yCoords[i] = (gridY + curveHeight - p3.y) / curveHeight;
-            } else if (i > 0 && i < N - 1 && bezierSegments.length > i) {
-                // 中間点: 右側のセグメント開始点の速度と座標を使用
-                const segRight = bezierSegments[i];
-                speeds[i] = calculateBezierVelocityNormalized(segRight, 0, gridX, gridY, curveWidth, curveHeight);
-                // Y座標を取得（右側セグメントのP0）
-                const { p0 } = segRight;
-                yCoords[i] = (gridY + curveHeight - p0.y) / curveHeight;
-                
-                if (false) {  // デバッグ用（通常はオフ）
-                    const segLeft = bezierSegments[i - 1];
-                    const velLeft = calculateBezierVelocityNormalized(segLeft, 1, gridX, gridY, curveWidth, curveHeight);
-                    const velRight = speeds[i];
-                    debugInfo += `  KF${i}速度連続性: left=${velLeft.toFixed(6)}, right=${velRight.toFixed(6)}\n`;
-                }
-            } else {
-                speeds[i] = 0;
-                yCoords[i] = 0;
-            }
-        }
-        
-        // 各区間でHermite補間の加速度を計算
-        for (let i = 0; i < N - 1; i++) {
-            const t_i = keyframes[i].time;
-            const t_i1 = keyframes[i + 1].time;
+        // 各セグメントでベジェ曲線の2次微分を計算
+        for (let segIdx = 0; segIdx < bezierSegments.length; segIdx++) {
+            const segment = bezierSegments[segIdx];
+            const { p0, p1, p2, p3, t0, t1 } = segment;
             
-            // 事前に計算した正規化Y座標を使用
-            const y_i = yCoords[i];
-            const y_i1 = yCoords[i + 1];
+            // 正規化空間のコントロールポイント
+            const x0 = (p0.x - gridX) / curveWidth;
+            const x1 = (p1.x - gridX) / curveWidth;
+            const x2 = (p2.x - gridX) / curveWidth;
+            const x3 = (p3.x - gridX) / curveWidth;
             
-            const Delta_i = t_i1 - t_i;
+            const y0 = (gridY + curveHeight - p0.y) / curveHeight;
+            const y1 = (gridY + curveHeight - p1.y) / curveHeight;
+            const y2 = (gridY + curveHeight - p2.y) / curveHeight;
+            const y3 = (gridY + curveHeight - p3.y) / curveHeight;
             
-            if (Math.abs(Delta_i) < 0.001) {
-                debugInfo += `セグメント${i}: スキップ (Δt=${Delta_i.toFixed(6)})\n`;
-                continue;
+            if (segIdx === 0) {
+                debugInfo += `\nセグメント${segIdx}:\n`;
+                debugInfo += `  X: [${x0.toFixed(3)}, ${x1.toFixed(3)}, ${x2.toFixed(3)}, ${x3.toFixed(3)}]\n`;
+                debugInfo += `  Y: [${y0.toFixed(3)}, ${y1.toFixed(3)}, ${y2.toFixed(3)}, ${y3.toFixed(3)}]\n`;
             }
             
-            const s_i = speeds[i];
-            const s_i1 = speeds[i + 1];
-            
-            // Hermite接線ベクトル（正規化空間での値を使用）
-            const m_0 = s_i;  // 正規化空間なのでΔt=1相当
-            const m_1 = s_i1;
-            
-            debugInfo += `\nセグメント${i} (t=${t_i.toFixed(3)}→${t_i1.toFixed(3)}, Δt=${Delta_i.toFixed(3)}):\n`;
-            debugInfo += `  値: y_i=${y_i.toFixed(3)}, y_i+1=${y_i1.toFixed(3)}\n`;
-            debugInfo += `  速度: s_i=${s_i.toFixed(4)}, s_i+1=${s_i1.toFixed(4)}\n`;
-            debugInfo += `  接線: m_0=${m_0.toFixed(4)}, m_1=${m_1.toFixed(4)}\n`;
-            
-            // 区間を正規化: τ ∈ [0, 1]
-            // Hermite補間: y(τ) = (2τ³-3τ²+1)y_i + (-2τ³+3τ²)y_i+1 + (τ³-2τ²+τ)m_0 + (τ³-τ²)m_1
-            // 
-            // 一階微分: dy/dτ = (6τ²-6τ)(y_i-y_i+1) + (3τ²-4τ+1)m_0 + (3τ²-2τ)m_1
-            // 二階微分: d²y/dτ² = (12τ-6)(y_i-y_i+1) + (6τ-4)m_0 + (6τ-2)m_1
-            //
-            // 時間に対する加速度: d²y/dt² = (1/Δt²) · d²y/dτ²
-            
-            const y_diff = y_i - y_i1;
-            
-            // 端点での加速度（デバッグ用）
-            const a_left = (6 * y_diff + 2 * m_0 + 4 * m_1);  // τ=0（正規化空間）
-            const a_right = (6 * (y_i1 - y_i) - 4 * m_0 - 2 * m_1);  // τ=1（正規化空間）
-            
-            debugInfo += `  端点加速度: a(t_i+)=${a_left.toFixed(4)}, a(t_i+1-)=${a_right.toFixed(4)}\n`;
-            
-            // サンプリング
-            const segmentSamples = Math.max(10, Math.ceil(samples * Delta_i / (keyframes[N-1].time - keyframes[0].time)));
+            const segmentSamples = Math.ceil(samples / bezierSegments.length);
             
             for (let j = 0; j <= segmentSamples; j++) {
-                const tau = j / segmentSamples;  // τ ∈ [0, 1]
+                const tau = j / segmentSamples;  // ベジェパラメータ τ ∈ [0, 1]
+                const oneMinusTau = 1 - tau;
                 
-                // 実時間を計算するため、このセグメントのBézier X座標を取得
-                let t; // スコープを広げる
+                // X(τ) - 時間座標
+                const X_tau = oneMinusTau * oneMinusTau * oneMinusTau * x0 +
+                              3 * oneMinusTau * oneMinusTau * tau * x1 +
+                              3 * oneMinusTau * tau * tau * x2 +
+                              tau * tau * tau * x3;
                 
-                // セグメントiに対応するbezierSegments[i]から制御点を取得
-                if (bezierSegments[i]) {
-                    const seg = bezierSegments[i];
-                    const { p0, p1, p2, p3 } = seg;
-                    
-                    // 正規化空間のX座標
-                    const seg_x0 = (p0.x - gridX) / curveWidth;
-                    const seg_x1 = (p1.x - gridX) / curveWidth;
-                    const seg_x2 = (p2.x - gridX) / curveWidth;
-                    const seg_x3 = (p3.x - gridX) / curveWidth;
-                    
-                    // Bézier X座標を計算
-                    const oneMinusTau = 1 - tau;
-                    const X_tau = oneMinusTau * oneMinusTau * oneMinusTau * seg_x0 +
-                                  3 * oneMinusTau * oneMinusTau * tau * seg_x1 +
-                                  3 * oneMinusTau * tau * tau * seg_x2 +
-                                  tau * tau * tau * seg_x3;
-                    
-                    // 全体の時間範囲での位置を計算
-                    const totalTimeRange = keyframes[N-1].time - keyframes[0].time;
-                    t = keyframes[0].time + X_tau * totalTimeRange;
-                } else {
-                    // フォールバック（bezierSegmentsが無い場合）
-                    t = t_i + tau * Delta_i;
+                // dX/dτ - X方向1次微分
+                const dX_dtau = 3 * oneMinusTau * oneMinusTau * (x1 - x0) +
+                                6 * oneMinusTau * tau * (x2 - x1) +
+                                3 * tau * tau * (x3 - x2);
+                
+                // d²X/dτ² - X方向2次微分
+                const d2X_dtau2 = 6 * oneMinusTau * (x2 - 2*x1 + x0) +
+                                  6 * tau * (x3 - 2*x2 + x1);
+                
+                // dY/dτ - Y方向1次微分
+                const dY_dtau = 3 * oneMinusTau * oneMinusTau * (y1 - y0) +
+                                6 * oneMinusTau * tau * (y2 - y1) +
+                                3 * tau * tau * (y3 - y2);
+                
+                // d²Y/dτ² - Y方向2次微分
+                const d2Y_dtau2 = 6 * oneMinusTau * (y2 - 2*y1 + y0) +
+                                  6 * tau * (y3 - 2*y2 + y1);
+                
+                // 加速度: d²Y/dt² = [d²Y/dτ² · dX/dτ - dY/dτ · d²X/dτ²] / (dX/dτ)³
+                let acceleration = 0;
+                if (Math.abs(dX_dtau) > 0.0001) {
+                    const numerator = d2Y_dtau2 * dX_dtau - dY_dtau * d2X_dtau2;
+                    const denominator = dX_dtau * dX_dtau * dX_dtau;
+                    acceleration = numerator / denominator;
                 }
                 
-                // d²y/dτ² = (12τ-6)(y_i-y_i+1) + (6τ-4)m_0 + (6τ-2)m_1
-                const d2y_dtau2 = (12 * tau - 6) * y_diff +
-                                  (6 * tau - 4) * m_0 +
-                                  (6 * tau - 2) * m_1;
+                if (segIdx === 0 && j < 3) {
+                    debugInfo += `  τ=${tau.toFixed(2)}: d²Y/dτ²=${d2Y_dtau2.toFixed(4)}, dX/dτ=${dX_dtau.toFixed(4)} → a=${acceleration.toFixed(4)}\n`;
+                }
                 
-                // 正規化空間での加速度（Δτ=1なので割らない）
-                const acceleration = d2y_dtau2;
-                
-                // 正規化時間（グラフ描画用）
-                const normalizedTime = (t - keyframes[0].time) / (keyframes[N-1].time - keyframes[0].time);
-                
-                accelerationValues.push({ time: normalizedTime, value: acceleration });
+                accelerationValues.push({ time: X_tau, value: acceleration });
             }
         }
         
@@ -3163,29 +3097,18 @@
             ctx.moveTo(gridX, zeroY);
             ctx.lineTo(gridX + curveWidth, zeroY);
             ctx.stroke();
-            
-            // 0ラインも描画
-            ctx.strokeStyle = 'rgba(255, 99, 132, 1)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([4, 4]);
-            ctx.beginPath();
-            ctx.moveTo(gridX, zeroY);
-            ctx.lineTo(gridX + curveWidth, zeroY);
-            ctx.stroke();
             ctx.setLineDash([]);
-            
             ctx.restore();
             return;
         }
         
-        // 加速度グラフを描画（半透明）
+        // 加速度グラフを描画
         ctx.strokeStyle = 'rgba(255, 99, 132, 1)';
         ctx.lineWidth = 2;
         ctx.beginPath();
         
         accelerationValues.forEach((point, idx) => {
             const x = gridX + point.time * curveWidth;
-            // 加速度を0中心でスケーリング
             const normalizedAccel = (point.value - minAccel) / accelRange;
             const y = gridY + curveHeight - (normalizedAccel * curveHeight);
             
