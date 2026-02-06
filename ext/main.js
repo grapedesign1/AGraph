@@ -4271,26 +4271,25 @@
         const displayWidth = rect.width || 160;
         const displayHeight = rect.height || 160;
         
-        // Canvas内部解像度は初回のみ設定、または強制リサイズ時のみ
-        // Resizeバーのドラッグ後は内部解像度を変更せず、再描画のみ
-        const isFirstDraw = canvas.width === 0;
+        // Canvas内部解像度を常に表示サイズと同期
+        // これにより、リサイズ時にアスペクト比が正しく維持される
+        const expectedWidth = displayWidth * devicePixelRatio;
+        const expectedHeight = displayHeight * devicePixelRatio;
         
-        if (isFirstDraw || forceResize) {
-            canvas.width = displayWidth * devicePixelRatio;
-            canvas.height = displayHeight * devicePixelRatio;
-            console.log('Canvas internal resolution set:', canvas.width, 'x', canvas.height);
+        if (canvas.width !== expectedWidth || canvas.height !== expectedHeight) {
+            canvas.width = expectedWidth;
+            canvas.height = expectedHeight;
+            console.log('Canvas internal resolution updated:', canvas.width, 'x', canvas.height);
         }
         
         // デバッグログ
-        const debugInfo = `redrawNPointCurve:\ncanvas.width: ${canvas.width}\ncanvas.height: ${canvas.height}\nrect.width: ${rect.width}\nrect.height: ${rect.height}\ndisplayWidth: ${displayWidth}\ndisplayHeight: ${displayHeight}\ngraphScale: ${graphScale}\nisFirstDraw: ${isFirstDraw}\nforceResize: ${forceResize}`;
+        const debugInfo = `redrawNPointCurve:\ncanvas.width: ${canvas.width}\ncanvas.height: ${canvas.height}\nrect.width: ${rect.width}\nrect.height: ${rect.height}\ndisplayWidth: ${displayWidth}\ndisplayHeight: ${displayHeight}\ngraphScale: ${graphScale}\nforceResize: ${forceResize}`;
         console.log(debugInfo);
         window._lastRedrawInfo = debugInfo;
         
-        // コンテキストをスケール（内部解像度に基づく）
-        // canvas内部解像度 / 表示サイズ の比率でスケーリング
-        const scaleX = canvas.width / displayWidth;
-        const scaleY = canvas.height / displayHeight;
-        ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+        // コンテキストをスケール（devicePixelRatioを使用）
+        // X軸とY軸で同じスケールを適用してアスペクト比を維持
+        ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
         
         // 描画品質を向上
         ctx.imageSmoothingEnabled = true;
