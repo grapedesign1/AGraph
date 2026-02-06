@@ -1,0 +1,12 @@
+node_modules/
+dist/
+certificate.p12
+*.zxp
+.DS_Store
+temp_build/
+dist/
+certificate.p12
+temp_zxp_build/
+
+# AESP License Configuration
+.env

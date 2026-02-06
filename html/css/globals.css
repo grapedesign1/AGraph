@@ -1,0 +1,302 @@
+@import url("https://cdnjs.cloudflare.com/ajax/libs/meyer-reset/2.0/reset.min.css");
+@import url("https://fonts.googleapis.com/css?family=Roboto:400");
+/* The following line is used to measure usage of this code. You can remove it if you want. */
+@import url("https://px.animaapp.com/691090105d15645e215241c2.691090115d15645e215241c5.eF4xReq.hcp.png");
+
+
+
+.screen a {
+  display: contents;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.div-graph {
+  align-items: flex-start;
+  background-color: var(--eerie-black);
+  border: 1px solid;
+  border-color: var(--fuscous-gray);
+  border-radius: 3px;
+  flex: 1;
+  flex-grow: 1;
+  justify-content: center;
+}
+
+.graph {
+  height: 160px;
+  max-height: 320px;
+  max-width: 320px;
+  position: relative;
+  width: 160px;
+}
+
+.graph-ui {
+  align-items: flex-end;
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+  padding: 4px;
+  position: relative;
+}
+
+.velocity-toggle {
+  aspect-ratio: 1;
+  height: 16px;
+  position: relative;
+  width: 16px;
+}
+
+.acceleration-toggle {
+  aspect-ratio: 1;
+  background-color: #ff2d55;
+  border: 0px none;
+  border-radius: 3px;
+  height: 16px;
+  position: relative;
+  width: 16px;
+}
+
+.a {
+  aspect-ratio: 0.8;
+  height: 10px;
+  left: 4px;
+  position: absolute;
+  top: 3px;
+  width: 8px;
+}
+
+.x-button {
+  aspect-ratio: 1;
+  background-color: var(--eerie-black);
+  border-radius: 3px;
+  height: 16px;
+  position: relative;
+  width: 16px;
+}
+
+.maximize-2 {
+  aspect-ratio: 1;
+  height: 14px;
+  left: 1px;
+  position: absolute;
+  top: 1px;
+  width: 14px;
+}
+
+.type {
+  aspect-ratio: 1;
+  height: 12px;
+  left: 2px;
+  position: absolute;
+  top: 2px;
+  width: 12px;
+}
+
+.group-1 {
+  aspect-ratio: 1;
+  height: 12px;
+  left: 2px;
+  position: relative;
+  top: 2px;
+  width: 12px;
+}
+
+.rectangle-1 {
+  background-color: var(--nobel);
+  left: 1px;
+  top: 0;
+}
+
+.rectangle-2 {
+  border-color: var(--nobel);
+  left: 3px;
+  top: 3px;
+  transform: rotate(90.00deg);
+}
+
+.e-button {
+  align-items: center;
+  background-color: var(--eerie-black);
+  border: 1px solid;
+  border-color: var(--fuscous-gray);
+  border-radius: 30px;
+  display: flex;
+  flex: 1;
+  flex-grow: 1;
+  gap: 6px;
+  height: 24px;
+  justify-content: center;
+  min-width: 60px;
+  padding: 8px;
+  position: relative;
+}
+
+.icon-1 {
+  margin-bottom: -2.00px;
+  margin-top: -2.00px;
+  position: relative;
+}
+
+.group {
+  background-image: url(../img/vector-4.svg);
+  background-size: 100% 100%;
+  height: 100%;
+  position: relative;
+}
+
+.vector {
+  height: 36.16%;
+  left: 40.35%;
+  position: absolute;
+  top: 41.58%;
+  width: 36.16%;
+}
+
+.analyze {
+  align-items: center;
+  color: var(--nobel);
+  display: flex;
+  font-weight: 400;
+  justify-content: center;
+  line-height: normal;
+  margin-bottom: -1.50px;
+  margin-top: -3.50px;
+  position: relative;
+  text-align: center;
+  white-space: nowrap;
+  width: fit-content;
+}
+
+.apply-button {
+  background-color: var(--eerie-black);
+  border: 1px solid;
+  border-color: var(--robins-egg-blue);
+  border-radius: 30px;
+  flex: 1;
+  flex-grow: 1;
+  gap: 6px;
+  height: 24px;
+  min-width: 60px;
+  padding: 8px;
+}
+
+.icon-2 {
+  background-image: url(../img/vector-6.svg);
+  background-size: 100% 100%;
+  margin-bottom: -2.00px;
+  margin-top: -2.00px;
+  position: relative;
+}
+
+.apply {
+  color: var(--robins-egg-blue);
+  font-weight: 400;
+  line-height: normal;
+  margin-bottom: -1.50px;
+  margin-top: -3.50px;
+  text-align: center;
+  white-space: nowrap;
+  width: fit-content;
+}
+
+.icon-3 {
+  background-image: url(../img/vector-7.svg);
+  background-size: 100% 100%;
+  margin-bottom: -2.00px;
+  margin-top: -2.00px;
+  position: relative;
+}
+
+.save {
+  align-items: center;
+  color: var(--nobel);
+  display: flex;
+  font-weight: 400;
+  justify-content: center;
+  line-height: normal;
+  margin-bottom: -1.50px;
+  margin-top: -3.50px;
+  position: relative;
+  text-align: center;
+  white-space: nowrap;
+  width: fit-content;
+}
+
+.name-pulldown {
+  background-color: var(--eerie-black);
+  border: 1px solid;
+  border-color: var(--fuscous-gray);
+  border-radius: 3px;
+  flex: 1;
+  flex-grow: 1;
+  height: 20px;
+  min-width: 60px;
+  position: relative;
+}
+
+.x-button-1 {
+  background-color: var(--eerie-black);
+  border-radius: 3px;
+  height: 20px;
+  position: relative;
+  width: 20px;
+}
+
+.icon {
+  left: 4px;
+  position: absolute;
+  top: 4px;
+}
+
+.card-size-slider {
+  border-radius: 3px;
+  height: 20px;
+  position: relative;
+  width: 60px;
+}
+
+.vector-1 {
+  height: 1px;
+  left: 0;
+  object-fit: cover;
+  position: absolute;
+  top: 10px;
+  width: 61px;
+}
+
+.ellipse-1 {
+  aspect-ratio: 1;
+  background-color: var(--nobel);
+  border-radius: 5px;
+  height: 10px;
+  left: 11px;
+  position: absolute;
+  top: 5px;
+  width: 10px;
+}
+
+.apply-1 {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  position: relative;
+}
+
+.icon-4 {
+  aspect-ratio: 1;
+  height: 12px;
+  width: 12px;
+}
+
+.rectangle {
+  border: 1px solid;
+  border-radius: 1px;
+  height: 10px;
+  position: absolute;
+  width: 7px;
+}
