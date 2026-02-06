@@ -382,6 +382,18 @@
             }
         }, 100);
         
+        // ウィンドウリサイズ時にグラフを再描画
+        let resizeTimeout;
+        window.addEventListener('resize', function() {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(function() {
+                if (graphData && graphData.keyframes && graphData.keyframes.length > 0) {
+                    nPointHandleEditingInitialized = false; // ハンドル編集を再初期化
+                    redrawNPointCurve(true); // forceResize=true でCanvas解像度を更新
+                }
+            }, 100); // 100msのデバウンス
+        });
+        
         console.log('AGraph Extension: Initialization completed');
         updateOutput('AGraph Extension initialized.<br>Default curve loaded. Select layers and click "Analyze Keyframes" button.');
     }
@@ -3445,8 +3457,8 @@
         const chartWidth = width - padding * 2;
         const chartHeight = height - padding * 2;
         
-        const curveWidth = Math.min(chartWidth * graphScale, chartHeight * graphScale);
-        const curveHeight = curveWidth;
+        const curveWidth = chartWidth * graphScale;
+        const curveHeight = chartHeight * graphScale;
         
         const centerX = width / 2;
         const centerY = height / 2;
@@ -4306,8 +4318,8 @@
         const padding = 20;
         const chartWidth = width - padding * 2;
         const chartHeight = height - padding * 2;
-        const curveWidth = Math.min(chartWidth * graphScale, chartHeight * graphScale);
-        const curveHeight = curveWidth;
+        const curveWidth = chartWidth * graphScale;
+        const curveHeight = chartHeight * graphScale;
         const centerX = width / 2;
         const centerY = height / 2;
         const gridX = centerX - curveWidth / 2;
@@ -4490,6 +4502,12 @@
             ctx.arc(kf.canvasX, kf.canvasY, 4, 0, Math.PI * 2);
             ctx.fill();
         });
+        
+        // forceResizeの場合、ハンドル編集を再初期化
+        if (forceResize && !nPointHandleEditingInitialized) {
+            initializeNPointHandleEditing();
+            nPointHandleEditingInitialized = true;
+        }
     }
     
     /**
@@ -5671,8 +5689,8 @@
         const chartWidth = width - padding * 2;
         const chartHeight = height - padding * 2;
         
-        const curveWidth = Math.min(chartWidth * graphScale, chartHeight * graphScale);
-        const curveHeight = curveWidth;
+        const curveWidth = chartWidth * graphScale;
+        const curveHeight = chartHeight * graphScale;
         
         const centerX = width / 2;
         const centerY = height / 2;
@@ -5991,8 +6009,8 @@
         const chartHeight = height - padding * 2;
         
         // Calculate positions - 正方形に近いエリアでカーブを描画
-        const curveWidth = Math.min(chartWidth * graphScale, chartHeight * graphScale);
-        const curveHeight = curveWidth; // 正方形に設定
+        const curveWidth = chartWidth * graphScale;
+        const curveHeight = chartHeight * graphScale;
         
         const centerX = width / 2;
         const centerY = height / 2;
