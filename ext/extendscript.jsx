@@ -3732,11 +3732,92 @@ function saveFileDialog(defaultFileName, jsonString) {
 // ============================================================
 
 /**
+ * キーフレームにおける加速度（d²v/dt²）を計算する。
+ *
+ * AEの3次ベジェカーブモデル:
+ *   区間 [keyA, keyB] に対し、パラメータ τ∈[0,1] で
+ *   時間 X(τ) と値 Y(τ) を3次ベジェで表し、
+ *     d²v/dt² = [Y''·X' - Y'·X''] / (X')³
+ *   を τ=0（out方向）または τ=1（in方向）で評価する。
+ *
+ * 制御点の構成（区間オフセット座標、P0=(0,0)）:
+ *   P1 = (Δt·outInf/100,  outSpeed·Δt·outInf/100)
+ *   P2 = (Δt·(1-inInf/100),  Δv - inSpeed·Δt·inInf/100)
+ *   P3 = (Δt, Δv)
+ *
+ * 1次元プロパティ（回転・不透明度・分離X位置など）を前提。
+ *
+ * @param {Property} prop       - 1次元プロパティ
+ * @param {number}   keyIndex   - キーフレームインデックス（1-based）
+ * @param {string}   direction  - "in"（左から到着）または "out"（右へ出発）
+ * @returns {number} 加速度 d²v/dt²（端点で計算不能な場合は 0）
+ */
+function getAccelerationAtKey(prop, keyIndex, direction) {
+    // --- 区間の制御点を構築するヘルパー ---
+    // startIdx → endIdx 区間の4制御点を返す
+    function buildControlPoints(startIdx, endIdx) {
+        var t_A = prop.keyTime(startIdx);
+        var t_B = prop.keyTime(endIdx);
+        var v_A = prop.keyValue(startIdx);
+        var v_B = prop.keyValue(endIdx);
+
+        var dt = t_B - t_A;
+        var dv = v_B - v_A;
+
+        var outEase = prop.keyOutTemporalEase(startIdx);
+        var inEase  = prop.keyInTemporalEase(endIdx);
+
+        var outSpeed = outEase[0].speed;
+        var outInf   = outEase[0].influence;
+        var inSpeed  = inEase[0].speed;
+        var inInf    = inEase[0].influence;
+
+        // P0 = (0, 0)
+        var P1x = dt * outInf / 100;
+        var P1y = outSpeed * P1x;               // = outSpeed * dt * outInf / 100
+        var P2x = dt * (1 - inInf / 100);
+        var P2y = dv - inSpeed * dt * inInf / 100;
+        var P3x = dt;
+        var P3y = dv;
+
+        return { P1x: P1x, P1y: P1y, P2x: P2x, P2y: P2y, P3x: P3x, P3y: P3y };
+    }
+
+    if (direction === "in") {
+        // 前区間 (keyIndex-1 → keyIndex) の τ=1 における加速度
+        if (keyIndex <= 1) return 0;
+
+        var cp = buildControlPoints(keyIndex - 1, keyIndex);
+
+        // 1次・2次導関数 at τ=1
+        var dX  = 3 * (cp.P3x - cp.P2x);               // dX/dτ
+        var dY  = 3 * (cp.P3y - cp.P2y);               // dY/dτ
+        var d2X = 6 * (cp.P3x - 2 * cp.P2x + cp.P1x); // d²X/dτ²
+        var d2Y = 6 * (cp.P3y - 2 * cp.P2y + cp.P1y); // d²Y/dτ²
+
+        if (Math.abs(dX) < 1e-12) return 0;
+        return (d2Y * dX - dY * d2X) / (dX * dX * dX);
+
+    } else {
+        // 次区間 (keyIndex → keyIndex+1) の τ=0 における加速度
+        if (keyIndex >= prop.numKeys) return 0;
+
+        var cp = buildControlPoints(keyIndex, keyIndex + 1);
+
+        // 1次・2次導関数 at τ=0
+        var dX  = 3 * cp.P1x;                           // dX/dτ
+        var dY  = 3 * cp.P1y;                           // dY/dτ
+        var d2X = 6 * (cp.P2x - 2 * cp.P1x);           // d²X/dτ²
+        var d2Y = 6 * (cp.P2y - 2 * cp.P1y);           // d²Y/dτ²
+
+        if (Math.abs(dX) < 1e-12) return 0;
+        return (d2Y * dX - dY * d2X) / (dX * dX * dX);
+    }
+}
+
+/**
  * キーフレームBの easeIn / easeOut の influence を二分探索で調整し、
  * 進入加速度(a_in)と脱出加速度(a_out)を一致させる（G2連続性）。
- *
- * 前提: getAccelerationAtKey(prop, keyIndex, direction) が実装済み。
- *       direction は "in" または "out"。
  *
  * 制約:
  *   - keyの時間・値は変更しない
