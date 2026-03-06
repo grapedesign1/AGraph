@@ -493,6 +493,12 @@
         if (applyButton) {
             applyButton.addEventListener('click', handleApplyButtonClick);
         }
+
+        // G2 Continuity ボタンのクリックイベント
+        const g2Button = document.getElementById('g2Button');
+        if (g2Button) {
+            g2Button.addEventListener('click', handleG2ButtonClick);
+        }
         
         // Fit Graph ボタンのクリックイベント
         const fitGraphButton = document.getElementById('fitGraphButton');
@@ -8524,6 +8530,59 @@
     }
 
     // ========================================
+
+    /**
+     * G2 Continuity ボタンのクリックハンドラ
+     * 選択されたキーフレームの加速度を連続化する
+     */
+    function handleG2ButtonClick() {
+        updateOutput('G2 Continuity: 選択キーフレームの加速度を解析中...');
+
+        csInterface.evalScript('aGraphOptimizeG2()', function(result) {
+            try {
+                console.log('G2 optimize result:', result);
+                var data = JSON.parse(result);
+
+                if (data.error) {
+                    updateOutput('G2 Error: ' + data.error);
+                    return;
+                }
+
+                if (!data.results || data.results.length === 0) {
+                    updateOutput('G2: 最適化対象のキーフレームがありません（3つ以上のキーフレームを選択してください）');
+                    return;
+                }
+
+                // 結果サマリーを表示
+                var successCount = 0;
+                var messages = [];
+                for (var i = 0; i < data.results.length; i++) {
+                    var r = data.results[i];
+                    if (r.success) {
+                        successCount++;
+                        messages.push(
+                            'Key ' + r.keyIndex + ': residual=' + r.residual.toFixed(6) +
+                            ' (inf: ' + r.easeInInfluence.toFixed(1) + '/' + r.easeOutInfluence.toFixed(1) + ')'
+                        );
+                    } else {
+                        messages.push('Key ' + r.keyIndex + ': FAILED - ' + (r.error || 'unknown'));
+                    }
+                }
+
+                updateOutput(
+                    'G2 完了: ' + successCount + '/' + data.results.length + ' キーフレーム最適化 | ' +
+                    messages.join(' | ')
+                );
+
+                // グラフを再解析して表示を更新
+                handleEasingAnalyzeClick();
+
+            } catch (error) {
+                updateOutput('G2 Error: ' + error.message);
+                console.error('G2 optimize error:', error);
+            }
+        });
+    }
 
     // グローバルスコープにエクスポート（デバッグ用）
     window.AGraphExtension = {

@@ -3966,6 +3966,61 @@ AGraphUtils.optimizeKeyframeG2 = function(prop, keyIndex, options) {
 };
 
 /**
+ * G2連続性最適化のエントリポイント（main.jsから呼び出される）
+ * 選択されたキーフレームのうち、端点を除く中間キーの加速度を連続化する。
+ */
+function aGraphOptimizeG2() {
+    try {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            return JSON.stringify({ error: 'No active composition' });
+        }
+
+        var selectedProps = comp.selectedProperties;
+        if (!selectedProps || selectedProps.length === 0) {
+            return JSON.stringify({ error: 'No properties selected' });
+        }
+
+        var results = [];
+
+        for (var p = 0; p < selectedProps.length; p++) {
+            var prop = selectedProps[p];
+            if (!prop.canVaryOverTime || prop.numKeys < 3) continue;
+
+            // 選択されたキーフレームのインデックスを収集
+            var selectedKeys = [];
+            for (var k = 1; k <= prop.numKeys; k++) {
+                if (prop.keySelected(k)) {
+                    selectedKeys.push(k);
+                }
+            }
+            if (selectedKeys.length < 3) continue;
+
+            // undo グループ開始
+            app.beginUndoGroup('AGraph G2 Continuity');
+
+            // 端点を除く中間キーすべてに最適化を適用
+            for (var i = 1; i < selectedKeys.length - 1; i++) {
+                var keyIdx = selectedKeys[i];
+                var result = AGraphUtils.optimizeKeyframeG2(prop, keyIdx);
+                result.keyIndex = keyIdx;
+                results.push(result);
+            }
+
+            app.endUndoGroup();
+        }
+
+        if (results.length === 0) {
+            return JSON.stringify({ error: 'Select 3+ keyframes on a property (middle keys will be optimized)' });
+        }
+
+        return JSON.stringify({ success: true, results: results });
+    } catch (e) {
+        return JSON.stringify({ error: e.toString() });
+    }
+}
+
+/**
  * ファイル選択ダイアログを表示してJSONを読み込み
  */
 function openFileDialog() {

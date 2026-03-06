@@ -391,6 +391,47 @@ body {
   transform: translateY(1px);
 }
 
+/* G2 Continuity Button */
+.g2-button {
+  background-color: var(--eerie-black);
+  border: 1px solid;
+  border-color: var(--fuscous-gray);
+  border-radius: 30px;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+  min-width: 24px;
+  flex: 0 0 auto;
+}
+
+.g2-button:hover {
+  background-color: #2a2a2a;
+  border-color: #FF9500;
+}
+
+.g2-button:hover .g2-label {
+  color: #FF9500;
+}
+
+.g2-button:active {
+  transform: translateY(1px);
+}
+
+.g2-label {
+  color: var(--nobel);
+  font-family: var(--font-family-roboto);
+  font-size: var(--font-size-m);
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .icon-2 {
   background-image: url(img/vector-6.svg);
   background-size: 100% 100%;
