@@ -3816,160 +3816,133 @@ function getAccelerationAtKey(prop, keyIndex, direction) {
 }
 
 /**
- * キーフレームBの easeIn / easeOut の influence を二分探索で調整し、
- * 進入加速度(a_in)と脱出加速度(a_out)を一致させる（G2連続性）。
+ * G2連続化：速度・影響率の複合最適化（グリッドサーチ）
  *
- * 制約:
- *   - keyの時間・値は変更しない
- *   - 隣接キー(A, C)のハンドルは変更しない
- *   - キーBのハンドル速度(speed)は変更しない
- *   - 変更するのはキーBの easeIn.influence と easeOut.influence のみ (0.1～100)
+ * 中点Bの speed, easeIn.influence, easeOut.influence を元の値の周辺で
+ * グリッドサーチし、加速度ギャップが最小かつ元の形状からの変形が
+ * 最小の組み合わせを見つける。
  *
- * @param {Property} prop       - 1次元プロパティ（回転・不透明度・X位置など）
+ * @param {Property} prop       - 1次元プロパティ
  * @param {number}   keyIndex   - 最適化対象のキーフレームインデックス（B）
- * @param {object}   [options]  - オプション設定
- * @param {number}   [options.maxIterations=30]  - 二分探索の最大反復回数
- * @param {number}   [options.tolerance=1e-4]    - 許容誤差
- * @param {number}   [options.numCandidates=20]  - ターゲット加速度の分割数
- * @returns {object} 結果オブジェクト { success, a_target, easeInInfluence, easeOutInfluence, cost, ... }
+ * @param {object}   [options]
+ * @param {number}   [options.speedSteps=10]   - speedの探索分割数
+ * @param {number}   [options.inflSteps=10]    - influenceの探索分割数
+ * @param {number}   [options.speedRange=0.15] - speedの探索範囲（±15%）
+ * @param {number}   [options.inflRange=0.20]  - influenceの探索範囲（±20%）
+ * @returns {object} { success, speed, easeInInfluence, easeOutInfluence, cost, ... }
  */
 AGraphUtils.optimizeKeyframeG2 = function(prop, keyIndex, options) {
-    var MAX_ITER       = (options && options.maxIterations)  ? options.maxIterations  : 30;
-    var TOL            = (options && options.tolerance)      ? options.tolerance      : 1e-4;
-    var NUM_CANDIDATES = (options && options.numCandidates)  ? options.numCandidates  : 20;
-    var INF_MIN   = 0.1;
-    var INF_MAX   = 100;
+    var SPEED_STEPS = (options && options.speedSteps) ? options.speedSteps : 10;
+    var INFL_STEPS  = (options && options.inflSteps)  ? options.inflSteps  : 10;
+    var SPEED_RANGE = (options && options.speedRange)  ? options.speedRange : 0.15;
+    var INFL_RANGE  = (options && options.inflRange)   ? options.inflRange  : 0.20;
+    var INF_MIN = 0.1;
+    var INF_MAX = 100;
 
-    // --- ヘルパー: キーBの easeIn influence だけを一時的に変更する ----
-    function setEaseInInfluence(influence) {
-        var inEase  = prop.keyInTemporalEase(keyIndex);
-        var outEase = prop.keyOutTemporalEase(keyIndex);
-        var newIn  = [new KeyframeEase(inEase[0].speed, influence)];
-        var newOut = [new KeyframeEase(outEase[0].speed, outEase[0].influence)];
+    // --- ヘルパー: キーBの ease を一括セット (speedはIN/OUT共通) ---
+    function setEaseAtKey(speed, inflIn, inflOut) {
+        var newIn  = [new KeyframeEase(speed, inflIn)];
+        var newOut = [new KeyframeEase(speed, inflOut)];
         prop.setTemporalEaseAtKey(keyIndex, newIn, newOut);
     }
 
-    // --- ヘルパー: キーBの easeOut influence だけを一時的に変更する ---
-    function setEaseOutInfluence(influence) {
-        var inEase  = prop.keyInTemporalEase(keyIndex);
-        var outEase = prop.keyOutTemporalEase(keyIndex);
-        var newIn  = [new KeyframeEase(inEase[0].speed, inEase[0].influence)];
-        var newOut = [new KeyframeEase(outEase[0].speed, influence)];
-        prop.setTemporalEaseAtKey(keyIndex, newIn, newOut);
-    }
-
-    // --- ヘルパー: 指定方向の加速度が target_a になる influence を二分探索で求める ---
-    function findInfluenceForAcceleration(target_a, direction) {
-        var setFn  = (direction === "in") ? setEaseInInfluence : setEaseOutInfluence;
-        var evalFn = function() { return getAccelerationAtKey(prop, keyIndex, direction); };
-
-        var lo = INF_MIN;
-        var hi = INF_MAX;
-
-        // 単調性の判定
-        setFn(lo);
-        var a_lo = evalFn();
-        setFn(hi);
-        var a_hi = evalFn();
-        var increasing = (a_hi >= a_lo);
-
-        for (var i = 0; i < MAX_ITER; i++) {
-            var mid = (lo + hi) / 2;
-            setFn(mid);
-            var a_mid = evalFn();
-
-            if (Math.abs(a_mid - target_a) < TOL) {
-                return mid;
-            }
-
-            if (increasing) {
-                if (a_mid < target_a) lo = mid; else hi = mid;
-            } else {
-                if (a_mid > target_a) lo = mid; else hi = mid;
-            }
-        }
-        return (lo + hi) / 2;
-    }
-
-    // =============== メイン処理（最小変形コスト探索） ===============
     try {
-        // 元の ease を保存（計算後に必ず復元する）
+        // 元の ease を保存
         var origIn  = prop.keyInTemporalEase(keyIndex);
         var origOut = prop.keyOutTemporalEase(keyIndex);
+        var origSpeed        = origIn[0].speed;
         var origInInfluence  = origIn[0].influence;
         var origOutInfluence = origOut[0].influence;
 
-        // 1) 現在の加速度を取得
+        // 元の加速度
         var orig_a_in  = getAccelerationAtKey(prop, keyIndex, "in");
         var orig_a_out = getAccelerationAtKey(prop, keyIndex, "out");
 
-        // 2) 探索範囲: orig_a_in と orig_a_out の間を N分割
-        var a_min = Math.min(orig_a_in, orig_a_out);
-        var a_max = Math.max(orig_a_in, orig_a_out);
+        // --- 探索範囲を構築 ---
+        var spdMin = origSpeed * (1 - SPEED_RANGE);
+        var spdMax = origSpeed * (1 + SPEED_RANGE);
+        // speedが0の場合は小さな範囲を設定
+        if (Math.abs(origSpeed) < 0.01) {
+            spdMin = -1;
+            spdMax = 1;
+        }
 
-        var bestCost = Infinity;
-        var bestInInfl  = origInInfluence;
-        var bestOutInfl = origOutInfluence;
-        var bestTarget  = (orig_a_in + orig_a_out) / 2;
+        var infInMin  = Math.max(INF_MIN, origInInfluence  * (1 - INFL_RANGE));
+        var infInMax  = Math.min(INF_MAX, origInInfluence  * (1 + INFL_RANGE));
+        var infOutMin = Math.max(INF_MIN, origOutInfluence * (1 - INFL_RANGE));
+        var infOutMax = Math.min(INF_MAX, origOutInfluence * (1 + INFL_RANGE));
 
-        for (var n = 0; n <= NUM_CANDIDATES; n++) {
-            // a_test: a_min ～ a_max を等間隔にサンプリング
-            var a_test = a_min + (a_max - a_min) * (n / NUM_CANDIDATES);
+        // --- グリッドサーチ ---
+        var bestCost     = Infinity;
+        var bestSpeed    = origSpeed;
+        var bestInflIn   = origInInfluence;
+        var bestInflOut  = origOutInfluence;
 
-            // 3) 各候補における最適 influence を二分探索で求める
-            //    easeIn 側: 毎回 origOut に戻してから in を探索
-            var restoreOut = [new KeyframeEase(origOut[0].speed, origOutInfluence)];
-            var restoreIn  = [new KeyframeEase(origIn[0].speed,  origInInfluence)];
-            prop.setTemporalEaseAtKey(keyIndex, restoreIn, restoreOut);
+        for (var si = 0; si <= SPEED_STEPS; si++) {
+            var testSpeed = spdMin + (spdMax - spdMin) * (si / SPEED_STEPS);
 
-            var test_infl_in = findInfluenceForAcceleration(a_test, "in");
+            for (var ii = 0; ii <= INFL_STEPS; ii++) {
+                var testInflIn = infInMin + (infInMax - infInMin) * (ii / INFL_STEPS);
 
-            //    easeOut 側: inを元に戻してから out を探索
-            prop.setTemporalEaseAtKey(keyIndex, restoreIn, restoreOut);
-            var test_infl_out = findInfluenceForAcceleration(a_test, "out");
+                for (var oi = 0; oi <= INFL_STEPS; oi++) {
+                    var testInflOut = infOutMin + (infOutMax - infOutMin) * (oi / INFL_STEPS);
 
-            // 4) コスト計算: 元の influence からの変化率の二乗和
-            var ratio_in  = (test_infl_in  / origInInfluence)  - 1;
-            var ratio_out = (test_infl_out / origOutInfluence) - 1;
-            var cost = ratio_in * ratio_in + ratio_out * ratio_out;
+                    // 一時的に ease をセット
+                    setEaseAtKey(testSpeed, testInflIn, testInflOut);
 
-            if (cost < bestCost) {
-                bestCost    = cost;
-                bestInInfl  = test_infl_in;
-                bestOutInfl = test_infl_out;
-                bestTarget  = a_test;
+                    // 加速度を評価
+                    var test_a_in  = getAccelerationAtKey(prop, keyIndex, "in");
+                    var test_a_out = getAccelerationAtKey(prop, keyIndex, "out");
+
+                    // コスト計算
+                    var gapPenalty = Math.abs(test_a_in - test_a_out) * 100;
+
+                    var spdRatio = (origSpeed !== 0)
+                        ? Math.pow((testSpeed / origSpeed) - 1, 2) * 10
+                        : Math.pow(testSpeed - origSpeed, 2) * 10;
+                    var infInRatio  = Math.pow((testInflIn  / origInInfluence)  - 1, 2);
+                    var infOutRatio = Math.pow((testInflOut / origOutInfluence) - 1, 2);
+
+                    var cost = gapPenalty + spdRatio + infInRatio + infOutRatio;
+
+                    if (cost < bestCost) {
+                        bestCost    = cost;
+                        bestSpeed   = testSpeed;
+                        bestInflIn  = testInflIn;
+                        bestInflOut = testInflOut;
+                    }
+                }
             }
         }
 
-        // 5) 最終加速度を確認（bestInfluence をセットして計測）
-        setEaseInInfluence(bestInInfl);
-        setEaseOutInfluence(bestOutInfl);
+        // 最終加速度を確認
+        setEaseAtKey(bestSpeed, bestInflIn, bestInflOut);
         var a_in_final  = getAccelerationAtKey(prop, keyIndex, "in");
         var a_out_final = getAccelerationAtKey(prop, keyIndex, "out");
 
-        // 6) ★ 元の ease に復元（計算のみ、適用しない）
-        var finalRestoreIn  = [new KeyframeEase(origIn[0].speed,  origInInfluence)];
-        var finalRestoreOut = [new KeyframeEase(origOut[0].speed, origOutInfluence)];
-        prop.setTemporalEaseAtKey(keyIndex, finalRestoreIn, finalRestoreOut);
+        // ★ 元の ease に復元（計算のみ、適用しない）
+        var restoreIn  = [new KeyframeEase(origIn[0].speed,  origInInfluence)];
+        var restoreOut = [new KeyframeEase(origOut[0].speed, origOutInfluence)];
+        prop.setTemporalEaseAtKey(keyIndex, restoreIn, restoreOut);
 
         return {
             success: true,
             keyTime: prop.keyTime(keyIndex),
-            a_target: bestTarget,
+            speed: bestSpeed,
+            origSpeed: origSpeed,
+            easeInInfluence:  bestInflIn,
+            easeOutInfluence: bestInflOut,
+            origInInfluence:  origInInfluence,
+            origOutInfluence: origOutInfluence,
             a_in_before:  orig_a_in,
             a_out_before: orig_a_out,
             a_in_after:   a_in_final,
             a_out_after:  a_out_final,
-            easeInInfluence:  bestInInfl,
-            easeOutInfluence: bestOutInfl,
-            origInInfluence:  origInInfluence,
-            origOutInfluence: origOutInfluence,
             cost: bestCost,
             residual: Math.abs(a_in_final - a_out_final)
         };
 
     } catch (e) {
-        // エラー時も元の ease に復元
         try {
             var rollbackIn  = [new KeyframeEase(origIn[0].speed,  origInInfluence)];
             var rollbackOut = [new KeyframeEase(origOut[0].speed, origOutInfluence)];

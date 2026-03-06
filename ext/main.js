@@ -8570,14 +8570,16 @@
                     }
                     successCount++;
 
-                    // keyTimeでgraphDataのキーフレームを特定し、influence値を更新
+                    // keyTimeでgraphDataのキーフレームを特定し、speedとinfluence値を更新
                     for (var j = 0; j < graphData.keyframes.length; j++) {
                         var gkf = graphData.keyframes[j];
                         if (Math.abs(gkf.originalTime - r.keyTime) < 0.001) {
                             if (gkf.easing.inTemporal) {
+                                gkf.easing.inTemporal.speed = r.speed;
                                 gkf.easing.inTemporal.influence = r.easeInInfluence;
                             }
                             if (gkf.easing.outTemporal) {
+                                gkf.easing.outTemporal.speed = r.speed;
                                 gkf.easing.outTemporal.influence = r.easeOutInfluence;
                             }
                             break;
@@ -8585,7 +8587,8 @@
                     }
 
                     messages.push(
-                        'Key ' + r.keyIndex + ': inf=' + r.easeInInfluence.toFixed(1) + '/' + r.easeOutInfluence.toFixed(1)
+                        'Key ' + r.keyIndex + ': spd=' + r.speed.toFixed(1) +
+                        ' inf=' + r.easeInInfluence.toFixed(1) + '/' + r.easeOutInfluence.toFixed(1)
                     );
                 }
 
