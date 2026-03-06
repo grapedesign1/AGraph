@@ -8570,15 +8570,17 @@
                     }
                     successCount++;
 
-                    // keyTimeでgraphDataのキーフレームを特定し、speed値のみ更新（influenceはロック）
+                    // keyTimeでgraphDataのキーフレームを特定し、speedとinfluenceを更新
                     for (var j = 0; j < graphData.keyframes.length; j++) {
                         var gkf = graphData.keyframes[j];
                         if (Math.abs(gkf.originalTime - r.keyTime) < 0.001) {
                             if (gkf.easing.inTemporal) {
                                 gkf.easing.inTemporal.speed = r.speed;
+                                gkf.easing.inTemporal.influence = r.easeInInfluence;
                             }
                             if (gkf.easing.outTemporal) {
                                 gkf.easing.outTemporal.speed = r.speed;
+                                gkf.easing.outTemporal.influence = r.easeOutInfluence;
                             }
                             break;
                         }
