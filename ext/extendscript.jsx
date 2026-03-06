@@ -3727,6 +3727,163 @@ function saveFileDialog(defaultFileName, jsonString) {
     }
 }
 
+// ============================================================
+// G2連続性の最適化（キーフレームBの加速度連続化）
+// ============================================================
+
+/**
+ * キーフレームBの easeIn / easeOut の influence を二分探索で調整し、
+ * 進入加速度(a_in)と脱出加速度(a_out)を一致させる（G2連続性）。
+ *
+ * 前提: getAccelerationAtKey(prop, keyIndex, direction) が実装済み。
+ *       direction は "in" または "out"。
+ *
+ * 制約:
+ *   - keyの時間・値は変更しない
+ *   - 隣接キー(A, C)のハンドルは変更しない
+ *   - キーBのハンドル速度(speed)は変更しない
+ *   - 変更するのはキーBの easeIn.influence と easeOut.influence のみ (0.1～100)
+ *
+ * @param {Property} prop       - 1次元プロパティ（回転・不透明度・X位置など）
+ * @param {number}   keyIndex   - 最適化対象のキーフレームインデックス（B）
+ * @param {object}   [options]  - オプション設定
+ * @param {number}   [options.maxIterations=30] - 二分探索の最大反復回数
+ * @param {number}   [options.tolerance=1e-4]   - 許容誤差
+ * @returns {object} 結果オブジェクト { success, a_target, easeInInfluence, easeOutInfluence, ... }
+ */
+AGraphUtils.optimizeKeyframeG2 = function(prop, keyIndex, options) {
+    var MAX_ITER  = (options && options.maxIterations) ? options.maxIterations : 30;
+    var TOL       = (options && options.tolerance)     ? options.tolerance     : 1e-4;
+    var INF_MIN   = 0.1;
+    var INF_MAX   = 100;
+
+    // --- ヘルパー: キーBの easeIn influence だけを一時的に変更する ----
+    function setEaseInInfluence(influence) {
+        var inEase  = prop.keyInTemporalEase(keyIndex);
+        var outEase = prop.keyOutTemporalEase(keyIndex);
+        // 速度はそのまま、influence だけ差し替え
+        var newIn  = [new KeyframeEase(inEase[0].speed, influence)];
+        var newOut = [new KeyframeEase(outEase[0].speed, outEase[0].influence)];
+        prop.setTemporalEaseAtKey(keyIndex, newIn, newOut);
+    }
+
+    // --- ヘルパー: キーBの easeOut influence だけを一時的に変更する ---
+    function setEaseOutInfluence(influence) {
+        var inEase  = prop.keyInTemporalEase(keyIndex);
+        var outEase = prop.keyOutTemporalEase(keyIndex);
+        var newIn  = [new KeyframeEase(inEase[0].speed, inEase[0].influence)];
+        var newOut = [new KeyframeEase(outEase[0].speed, influence)];
+        prop.setTemporalEaseAtKey(keyIndex, newIn, newOut);
+    }
+
+    // --- ヘルパー: 二分探索で influence を求める ---
+    // setFn(influence) で influence をセットし、
+    // evalFn() で現在の加速度を返す。a_target に一致する influence を返す。
+    function binarySearchInfluence(setFn, evalFn, a_target) {
+        var lo = INF_MIN;
+        var hi = INF_MAX;
+
+        // まず探索方向（単調増加 or 単調減少）を判定
+        setFn(lo);
+        var a_lo = evalFn();
+        setFn(hi);
+        var a_hi = evalFn();
+
+        // influence が増加すると加速度が増加するか減少するかで判定
+        var increasing = (a_hi >= a_lo);
+
+        for (var i = 0; i < MAX_ITER; i++) {
+            var mid = (lo + hi) / 2;
+            setFn(mid);
+            var a_mid = evalFn();
+
+            if (Math.abs(a_mid - a_target) < TOL) {
+                return mid; // 収束
+            }
+
+            // a_mid が a_target より大きい/小さいかで探索範囲を狭める
+            if (increasing) {
+                if (a_mid < a_target) {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            } else {
+                if (a_mid > a_target) {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+        }
+        // 収束しなかった場合、最後に評価した mid を返す
+        return (lo + hi) / 2;
+    }
+
+    // =============== メイン処理 ===============
+    try {
+        // 元の ease を保存（ロールバック用）
+        var origIn  = prop.keyInTemporalEase(keyIndex);
+        var origOut = prop.keyOutTemporalEase(keyIndex);
+        var origInInfluence  = origIn[0].influence;
+        var origOutInfluence = origOut[0].influence;
+
+        // 1) 現在の加速度を取得
+        var a_in_current  = getAccelerationAtKey(prop, keyIndex, "in");
+        var a_out_current = getAccelerationAtKey(prop, keyIndex, "out");
+
+        // 2) ターゲット加速度 = 平均値
+        var a_target = (a_in_current + a_out_current) / 2;
+
+        // 3) easeIn の influence を二分探索で最適化
+        var bestInInfluence = binarySearchInfluence(
+            setEaseInInfluence,
+            function() { return getAccelerationAtKey(prop, keyIndex, "in"); },
+            a_target
+        );
+        // 探索後の値を確定セット
+        setEaseInInfluence(bestInInfluence);
+
+        // 4) easeOut の influence を二分探索で最適化
+        var bestOutInfluence = binarySearchInfluence(
+            setEaseOutInfluence,
+            function() { return getAccelerationAtKey(prop, keyIndex, "out"); },
+            a_target
+        );
+        // 探索後の値を確定セット
+        setEaseOutInfluence(bestOutInfluence);
+
+        // 5) 最終的な加速度を確認
+        var a_in_final  = getAccelerationAtKey(prop, keyIndex, "in");
+        var a_out_final = getAccelerationAtKey(prop, keyIndex, "out");
+
+        return {
+            success: true,
+            a_target: a_target,
+            a_in_before:  a_in_current,
+            a_out_before: a_out_current,
+            a_in_after:   a_in_final,
+            a_out_after:  a_out_final,
+            easeInInfluence:  bestInInfluence,
+            easeOutInfluence: bestOutInfluence,
+            residual: Math.abs(a_in_final - a_out_final)
+        };
+
+    } catch (e) {
+        // エラー時は元の ease にロールバック
+        try {
+            var rollbackIn  = [new KeyframeEase(origIn[0].speed,  origInInfluence)];
+            var rollbackOut = [new KeyframeEase(origOut[0].speed, origOutInfluence)];
+            prop.setTemporalEaseAtKey(keyIndex, rollbackIn, rollbackOut);
+        } catch (ignore) {}
+
+        return {
+            success: false,
+            error: e.toString()
+        };
+    }
+};
+
 /**
  * ファイル選択ダイアログを表示してJSONを読み込み
  */
