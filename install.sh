@@ -3,7 +3,7 @@
 # Source → After Effects CEP Extensions
 
 SOURCE_DIR="$(dirname "$0")"
-DEST_DIR="/Users/shintarodanno/Library/Application Support/Adobe/CEP/extensions/AGraph"
+DEST_DIR="/Users/shintarodanno/Library/Application Support/Adobe/CEP/extensions/com.grapedesign.agraph"
 
 echo "🔄 AGraph Extension をインストール中..."
 echo "📂 Source: $SOURCE_DIR"
