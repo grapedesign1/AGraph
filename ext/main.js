@@ -8536,11 +8536,17 @@
      * 選択されたキーフレームの加速度を連続化する
      */
     function handleG2ButtonClick() {
-        updateOutput('G2 Continuity: 選択キーフレームの加速度を解析中...');
+        // graphDataが無い場合はまずAnalyzeが必要
+        if (!graphData || !graphData.keyframes || graphData.keyframes.length < 3) {
+            updateOutput('G2: 先にAnalyzeで3つ以上のキーフレームを読み込んでください');
+            return;
+        }
+
+        updateOutput('G2 Continuity: 最適influence値を計算中...');
 
         csInterface.evalScript('aGraphOptimizeG2()', function(result) {
             try {
-                console.log('G2 optimize result:', result);
+                console.log('G2 calculate result:', result);
                 var data = JSON.parse(result);
 
                 if (data.error) {
@@ -8553,29 +8559,43 @@
                     return;
                 }
 
-                // 結果サマリーを表示
+                // 計算結果をgraphDataに反映（グラフのみ更新、AEキーフレームは変更しない）
                 var successCount = 0;
                 var messages = [];
                 for (var i = 0; i < data.results.length; i++) {
                     var r = data.results[i];
-                    if (r.success) {
-                        successCount++;
-                        messages.push(
-                            'Key ' + r.keyIndex + ': residual=' + r.residual.toFixed(6) +
-                            ' (inf: ' + r.easeInInfluence.toFixed(1) + '/' + r.easeOutInfluence.toFixed(1) + ')'
-                        );
-                    } else {
+                    if (!r.success) {
                         messages.push('Key ' + r.keyIndex + ': FAILED - ' + (r.error || 'unknown'));
+                        continue;
                     }
+                    successCount++;
+
+                    // keyTimeでgraphDataのキーフレームを特定し、influence値を更新
+                    for (var j = 0; j < graphData.keyframes.length; j++) {
+                        var gkf = graphData.keyframes[j];
+                        if (Math.abs(gkf.originalTime - r.keyTime) < 0.001) {
+                            if (gkf.easing.inTemporal) {
+                                gkf.easing.inTemporal.influence = r.easeInInfluence;
+                            }
+                            if (gkf.easing.outTemporal) {
+                                gkf.easing.outTemporal.influence = r.easeOutInfluence;
+                            }
+                            break;
+                        }
+                    }
+
+                    messages.push(
+                        'Key ' + r.keyIndex + ': inf=' + r.easeInInfluence.toFixed(1) + '/' + r.easeOutInfluence.toFixed(1)
+                    );
                 }
 
                 updateOutput(
-                    'G2 完了: ' + successCount + '/' + data.results.length + ' キーフレーム最適化 | ' +
-                    messages.join(' | ')
+                    'G2 プレビュー: ' + successCount + '/' + data.results.length +
+                    ' キーフレーム計算完了（Applyで適用） | ' + messages.join(' | ')
                 );
 
-                // グラフを再解析して表示を更新
-                handleEasingAnalyzeClick();
+                // グラフを再描画（graphData更新済み）
+                createEasingVisualization(graphData.keyframes);
 
             } catch (error) {
                 updateOutput('G2 Error: ' + error.message);

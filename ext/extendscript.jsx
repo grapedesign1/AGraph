@@ -3903,7 +3903,7 @@ AGraphUtils.optimizeKeyframeG2 = function(prop, keyIndex, options) {
 
     // =============== メイン処理 ===============
     try {
-        // 元の ease を保存（ロールバック用）
+        // 元の ease を保存（計算後に必ず復元する）
         var origIn  = prop.keyInTemporalEase(keyIndex);
         var origOut = prop.keyOutTemporalEase(keyIndex);
         var origInInfluence  = origIn[0].influence;
@@ -3922,7 +3922,7 @@ AGraphUtils.optimizeKeyframeG2 = function(prop, keyIndex, options) {
             function() { return getAccelerationAtKey(prop, keyIndex, "in"); },
             a_target
         );
-        // 探索後の値を確定セット
+        // 探索後の値を確定セット（easeOut探索のため一時的に保持）
         setEaseInInfluence(bestInInfluence);
 
         // 4) easeOut の influence を二分探索で最適化
@@ -3931,15 +3931,21 @@ AGraphUtils.optimizeKeyframeG2 = function(prop, keyIndex, options) {
             function() { return getAccelerationAtKey(prop, keyIndex, "out"); },
             a_target
         );
-        // 探索後の値を確定セット
-        setEaseOutInfluence(bestOutInfluence);
 
-        // 5) 最終的な加速度を確認
+        // 5) 最適値が確定したら、最終加速度を取得
+        setEaseInInfluence(bestInInfluence);
+        setEaseOutInfluence(bestOutInfluence);
         var a_in_final  = getAccelerationAtKey(prop, keyIndex, "in");
         var a_out_final = getAccelerationAtKey(prop, keyIndex, "out");
 
+        // 6) ★ 元の ease に復元（計算のみ、適用しない）
+        var restoreIn  = [new KeyframeEase(origIn[0].speed,  origInInfluence)];
+        var restoreOut = [new KeyframeEase(origOut[0].speed, origOutInfluence)];
+        prop.setTemporalEaseAtKey(keyIndex, restoreIn, restoreOut);
+
         return {
             success: true,
+            keyTime: prop.keyTime(keyIndex),
             a_target: a_target,
             a_in_before:  a_in_current,
             a_out_before: a_out_current,
@@ -3951,7 +3957,7 @@ AGraphUtils.optimizeKeyframeG2 = function(prop, keyIndex, options) {
         };
 
     } catch (e) {
-        // エラー時は元の ease にロールバック
+        // エラー時も元の ease に復元
         try {
             var rollbackIn  = [new KeyframeEase(origIn[0].speed,  origInInfluence)];
             var rollbackOut = [new KeyframeEase(origOut[0].speed, origOutInfluence)];
@@ -3996,18 +4002,13 @@ function aGraphOptimizeG2() {
             }
             if (selectedKeys.length < 3) continue;
 
-            // undo グループ開始
-            app.beginUndoGroup('AGraph G2 Continuity');
-
-            // 端点を除く中間キーすべてに最適化を適用
+            // 端点を除く中間キーすべてに最適化を計算（適用はしない）
             for (var i = 1; i < selectedKeys.length - 1; i++) {
                 var keyIdx = selectedKeys[i];
                 var result = AGraphUtils.optimizeKeyframeG2(prop, keyIdx);
                 result.keyIndex = keyIdx;
                 results.push(result);
             }
-
-            app.endUndoGroup();
         }
 
         if (results.length === 0) {
