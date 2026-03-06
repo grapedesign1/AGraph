@@ -3816,37 +3816,85 @@ function getAccelerationAtKey(prop, keyIndex, direction) {
 }
 
 /**
- * G2連続化：加速度ギャップの符号反転を利用した Speed 探索
+ * G2連続化：speed + influence の2変数最適化（A案）
  *
- * influence は元の値で完全ロック。easeIn.speed == easeOut.speed として
- * gap = a_in - a_out の符号反転を検出し、ステップ半減で収束させる。
+ * influence の各候補ペアに対して符号反転二分探索で最適speedを求め、
+ * 全候補の中から「G2を達成しつつ元の形状に最も近い」解を選ぶ。
  *
  * @param {Property} prop       - 1次元プロパティ
  * @param {number}   keyIndex   - 最適化対象のキーフレームインデックス（B）
  * @param {object}   [options]
- * @param {number}   [options.initStep=1000]   - 初期ステップ幅
+ * @param {number}   [options.inflSteps=10]    - influence グリッド分割数
+ * @param {number}   [options.inflRange=0.20]  - influence 探索範囲（±20%）
+ * @param {number}   [options.initStep=1000]   - speed 二分探索の初期ステップ
  * @param {number}   [options.tolerance=0.1]   - gap 許容誤差
- * @param {number}   [options.maxIter=50]      - 最大反復回数
- * @returns {object} { success, speed, origSpeed, easeInInfluence, easeOutInfluence, a_in, a_out, residual, ... }
+ * @param {number}   [options.maxIter=50]      - speed 二分探索の最大反復
+ * @returns {object} { success, speed, easeInInfluence, easeOutInfluence, ... }
  */
 AGraphUtils.calculateOptimalG2Speed = function(prop, keyIndex, options) {
-    var INIT_STEP = (options && options.initStep  != null) ? options.initStep  : 1000;
-    var TOL       = (options && options.tolerance != null) ? options.tolerance : 0.1;
-    var MAX_ITER  = (options && options.maxIter   != null) ? options.maxIter   : 50;
+    var INFL_STEPS = (options && options.inflSteps != null) ? options.inflSteps : 10;
+    var INFL_RANGE = (options && options.inflRange != null) ? options.inflRange : 0.20;
+    var INIT_STEP  = (options && options.initStep  != null) ? options.initStep  : 1000;
+    var TOL        = (options && options.tolerance != null) ? options.tolerance : 0.1;
+    var MAX_ITER   = (options && options.maxIter   != null) ? options.maxIter   : 50;
+    var INF_MIN = 0.1;
+    var INF_MAX = 100;
 
-    // ヘルパー: キーBの speed を IN/OUT 同値でセット（influence はロック）
-    function setSpeedAtKey(speed, inflIn, inflOut) {
+    // --- ヘルパー ---
+    function setEaseAtKey(speed, inflIn, inflOut) {
         var newIn  = [new KeyframeEase(speed, inflIn)];
         var newOut = [new KeyframeEase(speed, inflOut)];
         prop.setTemporalEaseAtKey(keyIndex, newIn, newOut);
     }
 
-    // ヘルパー: 現在の speed で gap (a_in - a_out) を返す
     function evalGap(speed, inflIn, inflOut) {
-        setSpeedAtKey(speed, inflIn, inflOut);
+        setEaseAtKey(speed, inflIn, inflOut);
         var a_in  = getAccelerationAtKey(prop, keyIndex, "in");
         var a_out = getAccelerationAtKey(prop, keyIndex, "out");
         return a_in - a_out;
+    }
+
+    // 符号反転二分探索: 指定 influence ペアでの最適 speed を返す
+    // 見つからなければ null
+    function findSpeedForG2(inflIn, inflOut, refSpeed) {
+        var currentSpeed = refSpeed;
+        var step = INIT_STEP;
+        var direction = 1;
+
+        var lastGap = evalGap(currentSpeed, inflIn, inflOut);
+        if (Math.abs(lastGap) < TOL) return { speed: currentSpeed, gap: Math.abs(lastGap) };
+
+        // 方向決め
+        var probeGap = evalGap(currentSpeed + 1, inflIn, inflOut);
+        if (Math.abs(probeGap) > Math.abs(lastGap)) {
+            direction = -1;
+        }
+
+        var bestSpeed  = currentSpeed;
+        var bestAbsGap = Math.abs(lastGap);
+
+        for (var iter = 0; iter < MAX_ITER; iter++) {
+            currentSpeed += step * direction;
+            var currentGap = evalGap(currentSpeed, inflIn, inflOut);
+
+            if (Math.abs(currentGap) < bestAbsGap) {
+                bestAbsGap = Math.abs(currentGap);
+                bestSpeed  = currentSpeed;
+            }
+
+            if (Math.abs(currentGap) < TOL) {
+                return { speed: currentSpeed, gap: Math.abs(currentGap) };
+            }
+
+            if (currentGap * lastGap < 0) {
+                currentSpeed -= step * direction;
+                direction *= -1;
+                step /= 2;
+            }
+            lastGap = currentGap;
+        }
+
+        return { speed: bestSpeed, gap: bestAbsGap };
     }
 
     try {
@@ -3857,81 +3905,55 @@ AGraphUtils.calculateOptimalG2Speed = function(prop, keyIndex, options) {
         var origInInfluence  = origIn[0].influence;
         var origOutInfluence = origOut[0].influence;
 
-        // 元の加速度
         var orig_a_in  = getAccelerationAtKey(prop, keyIndex, "in");
         var orig_a_out = getAccelerationAtKey(prop, keyIndex, "out");
 
-        // --- 探索開始 ---
-        var currentSpeed = origSpeed;
-        var step = INIT_STEP;
-        var direction = 1;
+        // --- influence のグリッド範囲 ---
+        var infInMin  = Math.max(INF_MIN, origInInfluence  * (1 - INFL_RANGE));
+        var infInMax  = Math.min(INF_MAX, origInInfluence  * (1 + INFL_RANGE));
+        var infOutMin = Math.max(INF_MIN, origOutInfluence * (1 - INFL_RANGE));
+        var infOutMax = Math.min(INF_MAX, origOutInfluence * (1 + INFL_RANGE));
 
-        // 初期 gap
-        var lastGap = evalGap(currentSpeed, origInInfluence, origOutInfluence);
+        // --- 全候補を探索 ---
+        var bestCost     = Infinity;
+        var bestSpeed    = origSpeed;
+        var bestInflIn   = origInInfluence;
+        var bestInflOut  = origOutInfluence;
+        var bestGap      = Infinity;
 
-        // もう既にほぼゼロなら即終了
-        if (Math.abs(lastGap) < TOL) {
-            // 復元して返す
-            var restoreIn0  = [new KeyframeEase(origSpeed, origInInfluence)];
-            var restoreOut0 = [new KeyframeEase(origSpeed, origOutInfluence)];
-            prop.setTemporalEaseAtKey(keyIndex, restoreIn0, restoreOut0);
-            return {
-                success: true,
-                keyTime: prop.keyTime(keyIndex),
-                speed: currentSpeed,
-                origSpeed: origSpeed,
-                easeInInfluence: origInInfluence,
-                easeOutInfluence: origOutInfluence,
-                a_in_before: orig_a_in,
-                a_out_before: orig_a_out,
-                a_in: orig_a_in,
-                a_out: orig_a_out,
-                residual: Math.abs(lastGap)
-            };
+        for (var ii = 0; ii <= INFL_STEPS; ii++) {
+            var testInflIn = infInMin + (infInMax - infInMin) * (ii / INFL_STEPS);
+
+            for (var oi = 0; oi <= INFL_STEPS; oi++) {
+                var testInflOut = infOutMin + (infOutMax - infOutMin) * (oi / INFL_STEPS);
+
+                // この influence ペアで最適 speed を二分探索
+                var result = findSpeedForG2(testInflIn, testInflOut, origSpeed);
+
+                // shape_cost: 元のパラメータからの距離
+                var spdDev = (origSpeed !== 0)
+                    ? Math.pow((result.speed / origSpeed) - 1, 2)
+                    : Math.pow(result.speed - origSpeed, 2);
+                var infInDev  = Math.pow((testInflIn  / origInInfluence)  - 1, 2);
+                var infOutDev = Math.pow((testInflOut / origOutInfluence) - 1, 2);
+                var shapeCost = spdDev + infInDev + infOutDev;
+
+                // gap が許容範囲内の候補のみ、shapeCost で比較
+                // gap が許容外でも、gap + shapeCost の重み付きで比較
+                var cost = result.gap * 100 + shapeCost;
+
+                if (cost < bestCost) {
+                    bestCost    = cost;
+                    bestSpeed   = result.speed;
+                    bestInflIn  = testInflIn;
+                    bestInflOut = testInflOut;
+                    bestGap     = result.gap;
+                }
+            }
         }
 
-        // 最初の方向決め: +1 に動かして gap の絶対値が縮むか拡がるか
-        var probeGap = evalGap(currentSpeed + 1, origInInfluence, origOutInfluence);
-        if (Math.abs(probeGap) > Math.abs(lastGap)) {
-            direction = -1;
-        } else {
-            direction = 1;
-        }
-
-        // フォールバック用：最小 gap を記録
-        var bestSpeed = currentSpeed;
-        var bestAbsGap = Math.abs(lastGap);
-
-        // --- 反復探索 ---
-        for (var iter = 0; iter < MAX_ITER; iter++) {
-            currentSpeed += step * direction;
-
-            var currentGap = evalGap(currentSpeed, origInInfluence, origOutInfluence);
-
-            // フォールバック更新
-            if (Math.abs(currentGap) < bestAbsGap) {
-                bestAbsGap = Math.abs(currentGap);
-                bestSpeed  = currentSpeed;
-            }
-
-            // 収束判定
-            if (Math.abs(currentGap) < TOL) {
-                bestSpeed = currentSpeed;
-                break;
-            }
-
-            // 符号反転検出 → 通り過ぎた
-            if (currentGap * lastGap < 0) {
-                currentSpeed -= step * direction;  // 1歩戻す
-                direction *= -1;                   // 方向反転
-                step /= 2;                         // ステップ半減
-            }
-
-            lastGap = currentGap;
-        }
-
-        // 最終加速度を取得
-        setSpeedAtKey(bestSpeed, origInInfluence, origOutInfluence);
+        // 最終加速度を確認
+        setEaseAtKey(bestSpeed, bestInflIn, bestInflOut);
         var a_in_final  = getAccelerationAtKey(prop, keyIndex, "in");
         var a_out_final = getAccelerationAtKey(prop, keyIndex, "out");
 
@@ -3945,11 +3967,13 @@ AGraphUtils.calculateOptimalG2Speed = function(prop, keyIndex, options) {
             keyTime: prop.keyTime(keyIndex),
             speed: bestSpeed,
             origSpeed: origSpeed,
-            easeInInfluence: origInInfluence,
-            easeOutInfluence: origOutInfluence,
-            a_in_before: orig_a_in,
+            easeInInfluence:  bestInflIn,
+            easeOutInfluence: bestInflOut,
+            origInInfluence:  origInInfluence,
+            origOutInfluence: origOutInfluence,
+            a_in_before:  orig_a_in,
             a_out_before: orig_a_out,
-            a_in: a_in_final,
+            a_in:  a_in_final,
             a_out: a_out_final,
             residual: Math.abs(a_in_final - a_out_final)
         };
