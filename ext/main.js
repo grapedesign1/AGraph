@@ -8603,8 +8603,11 @@
                 // グラフを再描画（graphData更新済み）
                 createEasingVisualization(graphData.keyframes);
 
+                // 結果をalertで表示（出力エリアが非表示のため）
+                alert('G2 Result:\n' + messages.join('\n'));
+
             } catch (error) {
-                updateOutput('G2 Error: ' + error.message);
+                alert('G2 Error: ' + error.message);
                 console.error('G2 optimize error:', error);
             }
         });

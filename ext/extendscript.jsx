@@ -3960,17 +3960,12 @@ AGraphUtils.calculateOptimalG2Speed = function(prop, keyIndex, options) {
             }
         }
 
-        // 結果を検証（実際にセットして確認）
+        // ★ 最適値を適用（AEキーフレームを直接変更）
         prop.setTemporalEaseAtKey(keyIndex,
             [new KeyframeEase(bestInSpeed, origInInfluence)],
             [new KeyframeEase(bestOutSpeed, origOutInfluence)]);
         var a_in_final  = getAccelerationAtKey(prop, keyIndex, "in");
         var a_out_final = getAccelerationAtKey(prop, keyIndex, "out");
-
-        // ★ 元に復元（プレビューのみ、AEキーフレームは変更しない）
-        prop.setTemporalEaseAtKey(keyIndex,
-            [new KeyframeEase(origInSpeed, origInInfluence)],
-            [new KeyframeEase(origOutSpeed, origOutInfluence)]);
 
         return {
             success: true,
@@ -4012,8 +4007,11 @@ AGraphUtils.calculateOptimalG2Speed = function(prop, keyIndex, options) {
  */
 function aGraphOptimizeG2() {
     try {
+        app.beginUndoGroup('AGraph G2 Continuity');
+
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) {
+            app.endUndoGroup();
             return JSON.stringify({ error: 'No active composition' });
         }
 
@@ -4037,7 +4035,7 @@ function aGraphOptimizeG2() {
             }
             if (selectedKeys.length < 3) continue;
 
-            // 端点を除く中間キーすべてに最適速度を計算（適用はしない）
+            // 端点を除く中間キーすべてに最適速度を計算して適用
             for (var i = 1; i < selectedKeys.length - 1; i++) {
                 var keyIdx = selectedKeys[i];
                 var result = AGraphUtils.calculateOptimalG2Speed(prop, keyIdx);
@@ -4046,12 +4044,15 @@ function aGraphOptimizeG2() {
             }
         }
 
+        app.endUndoGroup();
+
         if (results.length === 0) {
             return JSON.stringify({ error: 'Select 3+ keyframes on a property (middle keys will be optimized)' });
         }
 
         return JSON.stringify({ success: true, results: results });
     } catch (e) {
+        try { app.endUndoGroup(); } catch (ignore) {}
         return JSON.stringify({ error: e.toString() });
     }
 }
