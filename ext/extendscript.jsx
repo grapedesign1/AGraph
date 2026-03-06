@@ -3855,8 +3855,8 @@ AGraphUtils.calculateOptimalG2Speed = function(prop, keyIndex, options) {
     }
 
     // 符号反転二分探索: 指定 influence ペアでの最適 speed を返す
-    // 見つからなければ null
-    function findSpeedForG2(inflIn, inflOut, refSpeed) {
+    // speedSign: 元のspeedの符号を維持する制約
+    function findSpeedForG2(inflIn, inflOut, refSpeed, speedSign) {
         var currentSpeed = refSpeed;
         var step = INIT_STEP;
         var direction = 1;
@@ -3874,7 +3874,13 @@ AGraphUtils.calculateOptimalG2Speed = function(prop, keyIndex, options) {
         var bestAbsGap = Math.abs(lastGap);
 
         for (var iter = 0; iter < MAX_ITER; iter++) {
-            currentSpeed += step * direction;
+            var nextSpeed = currentSpeed + step * direction;
+
+            // 符号制約: 正→正、負→負、0→制約なし
+            if (speedSign > 0 && nextSpeed < 0) nextSpeed = 0;
+            if (speedSign < 0 && nextSpeed > 0) nextSpeed = 0;
+
+            currentSpeed = nextSpeed;
             var currentGap = evalGap(currentSpeed, inflIn, inflOut);
 
             if (Math.abs(currentGap) < bestAbsGap) {
@@ -3914,6 +3920,9 @@ AGraphUtils.calculateOptimalG2Speed = function(prop, keyIndex, options) {
         var infOutMin = Math.max(INF_MIN, origOutInfluence * (1 - INFL_RANGE));
         var infOutMax = Math.min(INF_MAX, origOutInfluence * (1 + INFL_RANGE));
 
+        // speedの符号: 正なら1, 負なら-1, 0なら0
+        var speedSign = (origSpeed > 0) ? 1 : (origSpeed < 0) ? -1 : 0;
+
         // --- 全候補を探索 ---
         var bestCost     = Infinity;
         var bestSpeed    = origSpeed;
@@ -3927,8 +3936,8 @@ AGraphUtils.calculateOptimalG2Speed = function(prop, keyIndex, options) {
             for (var oi = 0; oi <= INFL_STEPS; oi++) {
                 var testInflOut = infOutMin + (infOutMax - infOutMin) * (oi / INFL_STEPS);
 
-                // この influence ペアで最適 speed を二分探索
-                var result = findSpeedForG2(testInflIn, testInflOut, origSpeed);
+                // この influence ペアで最適 speed を二分探索（符号制約付き）
+                var result = findSpeedForG2(testInflIn, testInflOut, origSpeed, speedSign);
 
                 // shape_cost: 元のパラメータからの距離
                 var spdDev = (origSpeed !== 0)
