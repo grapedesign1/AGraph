@@ -8588,7 +8588,10 @@
                         'Key ' + r.keyIndex +
                         ': inSpd ' + r.origInSpeed.toFixed(1) + '→' + r.easeInSpeed.toFixed(1) +
                         ' outSpd ' + r.origOutSpeed.toFixed(1) + '→' + r.easeOutSpeed.toFixed(1) +
-                        ' gap=' + r.residual.toFixed(4)
+                        ' gap=' + r.residual.toFixed(4) +
+                        ' a_tgt=' + (r.a_target != null ? r.a_target.toFixed(2) : '?') +
+                        ' slopes=' + (r.slope_in != null ? r.slope_in.toFixed(4) : '?') +
+                        '/' + (r.slope_out != null ? r.slope_out.toFixed(4) : '?')
                     );
                 }
 
