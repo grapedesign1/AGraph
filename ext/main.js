@@ -8570,15 +8570,19 @@
                     }
                     successCount++;
 
-                    // keyTimeでgraphDataのキーフレームを特定し、easeIn/Out の speed を個別に更新
+                    // keyTimeでgraphDataのキーフレームを特定し、speed と influence を更新
+                    var matchedIdx = -1;
                     for (var j = 0; j < graphData.keyframes.length; j++) {
                         var gkf = graphData.keyframes[j];
                         if (Math.abs(gkf.originalTime - r.keyTime) < 0.001) {
+                            matchedIdx = j;
                             if (gkf.easing.inTemporal) {
                                 gkf.easing.inTemporal.speed = r.easeInSpeed;
+                                gkf.easing.inTemporal.influence = r.easeInInfluence;
                             }
                             if (gkf.easing.outTemporal) {
                                 gkf.easing.outTemporal.speed = r.easeOutSpeed;
+                                gkf.easing.outTemporal.influence = r.easeOutInfluence;
                             }
                             break;
                         }
@@ -8586,9 +8590,13 @@
 
                     messages.push(
                         'Key ' + r.keyIndex +
-                        ': spd ' + r.origInSpeed.toFixed(1) + '→' + r.easeInSpeed.toFixed(1) +
-                        ' gap=' + r.residual.toFixed(4) +
-                        ' a=' + (r.a_in != null ? r.a_in.toFixed(2) : '?')
+                        '\nspd: ' + r.origInSpeed.toFixed(1) + ' → ' + r.easeInSpeed.toFixed(1) +
+                        '\ninInf: ' + r.origInInfluence.toFixed(1) + ' → ' + r.easeInInfluence.toFixed(1) +
+                        '\noutInf: ' + r.origOutInfluence.toFixed(1) + ' → ' + r.easeOutInfluence.toFixed(1) +
+                        '\na_before: ' + r.a_in_before.toFixed(1) + ' / ' + r.a_out_before.toFixed(1) +
+                        '\na_after: ' + r.a_in.toFixed(2) + ' / ' + r.a_out.toFixed(2) +
+                        '\nresidual: ' + r.residual.toFixed(6) +
+                        '\ncost: ' + r.cost.toFixed(6)
                     );
                 }
 

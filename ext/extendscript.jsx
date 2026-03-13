@@ -3816,104 +3816,165 @@ function getAccelerationAtKey(prop, keyIndex, direction) {
 }
 
 /**
- * G2連続化：easeIn.speed = easeOut.speed = s として、
- * a_in(s) == a_out(s) を満たす唯一の s を求める。
+ * G2連続化：ペナルティ法による幾何学的最適化（曲線フェアリング）
  *
- * G2連続の条件:
- *   C1: 速度連続 → easeIn.speed == easeOut.speed
- *   G2: 加速度連続 → a_in == a_out
+ * 変数: speed（easeIn/Out共通）, easeIn.influence, easeOut.influence
  *
- * influence 固定なら a_in(s), a_out(s) はそれぞれ s の1次関数。
- * したがって a_in(s) = a_out(s) は1元1次方程式で直接解ける:
+ * Cost = shape_penalty + W * accel_gap_penalty
+ *   - shape_penalty = Σ ((test - orig) / orig)² （正規化変化率の二乗和）
+ *   - accel_gap_penalty = (a_in - a_out)²
+ *   - W = 10000 （加速度連続性を最優先）
  *
- *   s = (a_out_orig - a_in_orig + slope_in * origInSpd - slope_out * origOutSpd)
- *       / (slope_in - slope_out)
+ * Hill Climbing + 焼きなまし的ステップ減衰
+ *   - speed: ±5%、influence: ±2%
+ *   - 反復ごとにステップを線形減衰
+ *   - 純粋数学による加速度計算（AEプロパティ操作なし、高速）
  *
  * @param {Property} prop       - 1次元プロパティ
  * @param {number}   keyIndex   - 最適化対象のキーフレームインデックス（B）
- * @returns {object} { success, easeInSpeed, easeOutSpeed, ... }
+ * @returns {object} { success, easeInSpeed, easeOutSpeed, easeInInfluence, easeOutInfluence, ... }
  */
 AGraphUtils.calculateOptimalG2Speed = function(prop, keyIndex) {
-    var origInSpeed, origOutSpeed, origInInfluence, origOutInfluence;
-
     try {
+        // --- 元の値を保存 ---
         var origIn  = prop.keyInTemporalEase(keyIndex);
         var origOut = prop.keyOutTemporalEase(keyIndex);
-        origInSpeed      = origIn[0].speed;
-        origOutSpeed     = origOut[0].speed;
-        origInInfluence  = origIn[0].influence;
-        origOutInfluence = origOut[0].influence;
+        var origInSpeed      = origIn[0].speed;
+        var origOutSpeed     = origOut[0].speed;
+        var origInInfluence  = origIn[0].influence;
+        var origOutInfluence = origOut[0].influence;
 
-        // 元の加速度を取得
-        var orig_a_in  = getAccelerationAtKey(prop, keyIndex, "in");
-        var orig_a_out = getAccelerationAtKey(prop, keyIndex, "out");
+        // 基準speed（左右の平均）
+        var orig_speed = (origInSpeed + origOutSpeed) / 2;
 
-        // ── 傾きを求める ──
-        // slope_in: inSpeed を +1 したときの a_in の変化量
-        prop.setTemporalEaseAtKey(keyIndex,
-            [new KeyframeEase(origInSpeed + 1, origInInfluence)],
-            [new KeyframeEase(origOutSpeed, origOutInfluence)]);
-        var a_in_probe = getAccelerationAtKey(prop, keyIndex, "in");
-        var slope_in = a_in_probe - orig_a_in;
+        // --- 隣接キーフレームの固定パラメータ ---
+        // 前区間 A→B
+        var prevOutEase = prop.keyOutTemporalEase(keyIndex - 1);
+        var outSpd_A = prevOutEase[0].speed;
+        var outInf_A = prevOutEase[0].influence;
+        var dt_prev = prop.keyTime(keyIndex) - prop.keyTime(keyIndex - 1);
+        var dv_prev = prop.keyValue(keyIndex) - prop.keyValue(keyIndex - 1);
 
-        // slope_out: outSpeed を +1 したときの a_out の変化量
-        prop.setTemporalEaseAtKey(keyIndex,
-            [new KeyframeEase(origInSpeed, origInInfluence)],
-            [new KeyframeEase(origOutSpeed + 1, origOutInfluence)]);
-        var a_out_probe = getAccelerationAtKey(prop, keyIndex, "out");
-        var slope_out = a_out_probe - orig_a_out;
+        // 次区間 B→C
+        var nextInEase = prop.keyInTemporalEase(keyIndex + 1);
+        var inSpd_C = nextInEase[0].speed;
+        var inInf_C = nextInEase[0].influence;
+        var dt_next = prop.keyTime(keyIndex + 1) - prop.keyTime(keyIndex);
+        var dv_next = prop.keyValue(keyIndex + 1) - prop.keyValue(keyIndex);
 
-        // 元に戻す
-        prop.setTemporalEaseAtKey(keyIndex,
-            [new KeyframeEase(origInSpeed, origInInfluence)],
-            [new KeyframeEase(origOutSpeed, origOutInfluence)]);
+        // --- 純粋数学による加速度計算 ---
+        // a_in: 前区間 A→B の τ=1 における加速度
+        function computeAccelIn(inSpd_B, inInf_B) {
+            var P1x = dt_prev * outInf_A / 100;
+            var P1y = outSpd_A * P1x;
+            var P2x = dt_prev * (1 - inInf_B / 100);
+            var P2y = dv_prev - inSpd_B * dt_prev * inInf_B / 100;
+            var P3x = dt_prev;
+            var P3y = dv_prev;
 
-        // slope_in == slope_out なら解なし（平行線）
-        var denom = slope_in - slope_out;
-        if (Math.abs(denom) < 1e-12) {
-            return { success: false, error: "No solution: slopes are parallel" };
+            var dX  = 3 * (P3x - P2x);
+            var dY  = 3 * (P3y - P2y);
+            var d2X = 6 * (P3x - 2 * P2x + P1x);
+            var d2Y = 6 * (P3y - 2 * P2y + P1y);
+
+            if (Math.abs(dX) < 1e-12) return 0;
+            return (d2Y * dX - dY * d2X) / (dX * dX * dX);
         }
 
-        // ── 直接解法 ──
-        var s = (orig_a_out - orig_a_in + slope_in * origInSpeed - slope_out * origOutSpeed) / denom;
+        // a_out: 次区間 B→C の τ=0 における加速度
+        function computeAccelOut(outSpd_B, outInf_B) {
+            var P1x = dt_next * outInf_B / 100;
+            var P1y = outSpd_B * P1x;
+            var P2x = dt_next * (1 - inInf_C / 100);
+            var P2y = dv_next - inSpd_C * dt_next * inInf_C / 100;
 
-        // 検証: 実際にセットして加速度を確認
-        prop.setTemporalEaseAtKey(keyIndex,
-            [new KeyframeEase(s, origInInfluence)],
-            [new KeyframeEase(s, origOutInfluence)]);
-        var a_in_final  = getAccelerationAtKey(prop, keyIndex, "in");
-        var a_out_final = getAccelerationAtKey(prop, keyIndex, "out");
+            var dX  = 3 * P1x;
+            var dY  = 3 * P1y;
+            var d2X = 6 * (P2x - 2 * P1x);
+            var d2Y = 6 * (P2y - 2 * P1y);
 
-        // ★ 元の ease に復元（パネルグラフのみ更新、AEキーフレームは変更しない）
-        prop.setTemporalEaseAtKey(keyIndex,
-            [new KeyframeEase(origInSpeed, origInInfluence)],
-            [new KeyframeEase(origOutSpeed, origOutInfluence)]);
+            if (Math.abs(dX) < 1e-12) return 0;
+            return (d2Y * dX - dY * d2X) / (dX * dX * dX);
+        }
+
+        // --- コスト関数 ---
+        var W = 10000;
+        var sRef    = Math.abs(orig_speed)       > 1e-6 ? orig_speed       : 1;
+        var iInRef  = Math.abs(origInInfluence)  > 1e-6 ? origInInfluence  : 1;
+        var iOutRef = Math.abs(origOutInfluence) > 1e-6 ? origOutInfluence : 1;
+
+        function computeCost(test_speed, test_infl_in, test_infl_out) {
+            var shape_penalty =
+                Math.pow((test_speed - orig_speed) / sRef, 2) +
+                Math.pow((test_infl_in - origInInfluence) / iInRef, 2) +
+                Math.pow((test_infl_out - origOutInfluence) / iOutRef, 2);
+
+            var a_in  = computeAccelIn(test_speed, test_infl_in);
+            var a_out = computeAccelOut(test_speed, test_infl_out);
+            var accel_gap = Math.pow(a_in - a_out, 2);
+
+            return shape_penalty + W * accel_gap;
+        }
+
+        // --- Hill Climbing ---
+        var MAX_ITER = 1000;
+        var best_speed    = orig_speed;
+        var best_infl_in  = origInInfluence;
+        var best_infl_out = origOutInfluence;
+        var min_cost = computeCost(best_speed, best_infl_in, best_infl_out);
+
+        var speed_step_pct = 0.05;   // ±5%
+        var infl_step_pct  = 0.02;   // ±2%
+        var speed_abs = Math.abs(orig_speed) > 1e-6 ? Math.abs(orig_speed) : 1;
+
+        for (var iter = 0; iter < MAX_ITER; iter++) {
+            var decay = 1.0 - iter / MAX_ITER;
+
+            var test_speed    = best_speed    + speed_abs      * speed_step_pct * decay * (Math.random() * 2 - 1);
+            var test_infl_in  = best_infl_in  + origInInfluence * infl_step_pct * decay * (Math.random() * 2 - 1);
+            var test_infl_out = best_infl_out + origOutInfluence * infl_step_pct * decay * (Math.random() * 2 - 1);
+
+            // AE制約: influenceは 0.1〜100
+            if (test_infl_in < 0.1) test_infl_in = 0.1;
+            if (test_infl_in > 100) test_infl_in = 100;
+            if (test_infl_out < 0.1) test_infl_out = 0.1;
+            if (test_infl_out > 100) test_infl_out = 100;
+
+            var cost = computeCost(test_speed, test_infl_in, test_infl_out);
+            if (cost < min_cost) {
+                min_cost      = cost;
+                best_speed    = test_speed;
+                best_infl_in  = test_infl_in;
+                best_infl_out = test_infl_out;
+            }
+        }
+
+        // --- 結果を計算 ---
+        var orig_a_in  = computeAccelIn(origInSpeed, origInInfluence);
+        var orig_a_out = computeAccelOut(origOutSpeed, origOutInfluence);
+        var final_a_in  = computeAccelIn(best_speed, best_infl_in);
+        var final_a_out = computeAccelOut(best_speed, best_infl_out);
 
         return {
             success: true,
             keyTime: prop.keyTime(keyIndex),
-            easeInSpeed: s,
-            easeOutSpeed: s,
+            easeInSpeed: best_speed,
+            easeOutSpeed: best_speed,
             origInSpeed: origInSpeed,
             origOutSpeed: origOutSpeed,
-            easeInInfluence: origInInfluence,
-            easeOutInfluence: origOutInfluence,
+            easeInInfluence: best_infl_in,
+            easeOutInfluence: best_infl_out,
+            origInInfluence: origInInfluence,
+            origOutInfluence: origOutInfluence,
             a_in_before: orig_a_in,
             a_out_before: orig_a_out,
-            a_in: a_in_final,
-            a_out: a_out_final,
-            residual: Math.abs(a_in_final - a_out_final),
-            slope_in: slope_in,
-            slope_out: slope_out
+            a_in: final_a_in,
+            a_out: final_a_out,
+            residual: Math.abs(final_a_in - final_a_out),
+            cost: min_cost
         };
 
     } catch (e) {
-        try {
-            prop.setTemporalEaseAtKey(keyIndex,
-                [new KeyframeEase(origInSpeed, origInInfluence)],
-                [new KeyframeEase(origOutSpeed, origOutInfluence)]);
-        } catch (ignore) {}
-
         return {
             success: false,
             error: e.toString()
