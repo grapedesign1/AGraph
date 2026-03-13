@@ -8571,19 +8571,52 @@
                     successCount++;
 
                     // keyTimeでgraphDataのキーフレームを特定し、speed と influence を更新
+                    // graphData.keyframesは正規化済み空間なので、rawAEspeedを正規化する必要がある
                     var matchedIdx = -1;
                     for (var j = 0; j < graphData.keyframes.length; j++) {
                         var gkf = graphData.keyframes[j];
                         if (Math.abs(gkf.originalTime - r.keyTime) < 0.001) {
                             matchedIdx = j;
-                            if (gkf.easing.inTemporal) {
-                                gkf.easing.inTemporal.speed = r.easeInSpeed;
+
+                            // inTemporal: 前のKF→現在のKFのセグメント
+                            if (gkf.easing.inTemporal && j > 0) {
+                                var prevKf = graphData.keyframes[j - 1];
+                                var segTimeDiff = Math.abs(gkf.originalTime - prevKf.originalTime);
+                                var segValDiff = Math.abs(
+                                    (Array.isArray(gkf.originalValue) ? gkf.originalValue[0] : gkf.originalValue) -
+                                    (Array.isArray(prevKf.originalValue) ? prevKf.originalValue[0] : prevKf.originalValue)
+                                );
+                                var segRate = segTimeDiff > 0 ? segValDiff / segTimeDiff : 0;
+                                var normInSpd = segRate !== 0 ? (r.easeInSpeed / segRate) * 100 : r.easeInSpeed;
+                                // 値が減少しているセグメントでは符号反転
+                                var prevVal = Array.isArray(prevKf.originalValue) ? prevKf.originalValue[0] : prevKf.originalValue;
+                                var curVal = Array.isArray(gkf.originalValue) ? gkf.originalValue[0] : gkf.originalValue;
+                                if (curVal < prevVal) {
+                                    normInSpd = -normInSpd;
+                                }
+                                gkf.easing.inTemporal.speed = normInSpd;
                                 gkf.easing.inTemporal.influence = r.easeInInfluence;
                             }
-                            if (gkf.easing.outTemporal) {
-                                gkf.easing.outTemporal.speed = r.easeOutSpeed;
+
+                            // outTemporal: 現在のKF→次のKFのセグメント
+                            if (gkf.easing.outTemporal && j < graphData.keyframes.length - 1) {
+                                var nextKf = graphData.keyframes[j + 1];
+                                var segTimeDiff2 = Math.abs(nextKf.originalTime - gkf.originalTime);
+                                var segValDiff2 = Math.abs(
+                                    (Array.isArray(nextKf.originalValue) ? nextKf.originalValue[0] : nextKf.originalValue) -
+                                    (Array.isArray(gkf.originalValue) ? gkf.originalValue[0] : gkf.originalValue)
+                                );
+                                var segRate2 = segTimeDiff2 > 0 ? segValDiff2 / segTimeDiff2 : 0;
+                                var normOutSpd = segRate2 !== 0 ? (r.easeOutSpeed / segRate2) * 100 : r.easeOutSpeed;
+                                var curVal2 = Array.isArray(gkf.originalValue) ? gkf.originalValue[0] : gkf.originalValue;
+                                var nextVal = Array.isArray(nextKf.originalValue) ? nextKf.originalValue[0] : nextKf.originalValue;
+                                if (nextVal < curVal2) {
+                                    normOutSpd = -normOutSpd;
+                                }
+                                gkf.easing.outTemporal.speed = normOutSpd;
                                 gkf.easing.outTemporal.influence = r.easeOutInfluence;
                             }
+
                             break;
                         }
                     }
@@ -8609,7 +8642,7 @@
                 createEasingVisualization(graphData.keyframes);
 
                 // 結果をalertで表示（出力エリアが非表示のため）
-                alert('G2 Result:\n' + messages.join('\n'));
+                alert('[G2 v2-penalty 2026-03-13]\n' + messages.join('\n'));
 
             } catch (error) {
                 alert('G2 Error: ' + error.message);
